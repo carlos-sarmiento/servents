@@ -1,7 +1,26 @@
-from .const import DOMAIN, SERVENT_SENSOR, SERVENT_BINARY_SENSOR, SERVENT_BUTTON, SERVENT_SWITCH, SERVENT_NUMBER, SERVENT_SELECT, SERVENT_ENTITY, SERVENT_ID
-from .utilities import get_all_device_ids, get_hass_object, get_platform_for_servent_id, load_config_from_file, store_hass_object
+from .const import (
+    DOMAIN,
+    SERVENT_SENSOR,
+    SERVENT_BINARY_SENSOR,
+    SERVENT_BUTTON,
+    SERVENT_SWITCH,
+    SERVENT_NUMBER,
+    SERVENT_SELECT,
+    SERVENT_ENTITY,
+    SERVENT_ID,
+)
+from .utilities import (
+    get_all_device_ids,
+    get_hass_object,
+    get_platform_for_servent_id,
+    load_config_from_file,
+    store_hass_object,
+)
 from .sensor import async_handle_create_sensor, handle_update_sensor_state
-from .binary_sensor import async_handle_create_binary_sensor, handle_update_binary_sensor_state
+from .binary_sensor import (
+    async_handle_create_binary_sensor,
+    handle_update_binary_sensor_state,
+)
 from .switch import async_handle_create_switch
 from .number import async_handle_create_number
 from .select import async_handle_create_select
@@ -16,16 +35,20 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr
 
 _LOGGER = logging.getLogger(__name__)
-PLATFORMS: list[Platform] = [Platform.SENSOR,
-                             Platform.BINARY_SENSOR,
-                             Platform.NUMBER,
-                             Platform.SELECT,
-                             Platform.SWITCH]
+
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 
 async def handle_create_entity(call: ServiceCall) -> None:
     """Handle the service call."""
-    type = call.data.get('type')
+    type = call.data.get("type")
 
     hass = get_hass_object()
 
@@ -35,7 +58,8 @@ async def handle_create_entity(call: ServiceCall) -> None:
 
     if platform is not None and platform != type:
         raise Exception(
-            f"Can't change the platform '{platform}' for an existing Ent: {servent_id}")
+            f"Can't change the platform '{platform}' for an existing Ent: {servent_id}"
+        )
 
     if type == SERVENT_SENSOR:
         await async_handle_create_sensor(hass, call)
@@ -56,9 +80,9 @@ async def handle_create_entity(call: ServiceCall) -> None:
 
 async def handle_update_entity(call: ServiceCall) -> None:
     """Handle the service call."""
-    servent_id = call.data['servent_id']
-    state = call.data['state']
-    attributes = call.data.get('attributes', {})
+    servent_id = call.data["servent_id"]
+    state = call.data["state"]
+    attributes = call.data.get("attributes", {})
 
     platform = get_platform_for_servent_id(servent_id)
 

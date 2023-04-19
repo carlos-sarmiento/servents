@@ -1,0 +1,18 @@
+{
+  "[python]": {
+    "editor.formatOnSave": true,
+  },
+  "[yaml]": {
+    "editor.formatOnSave": true
+  },
+  "[jsonc]": {
+    "editor.formatOnSave": true
+  },
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.linting.flake8Enabled": true,
+  "python.linting.enabled": true,
+  "python.linting.flake8Args": [
+    "--max-line-length=200"
+  ],
+  "python.formatting.provider": "black"
+}
