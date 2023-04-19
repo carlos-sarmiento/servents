@@ -56,11 +56,6 @@ async def async_handle_create_binary_sensor(hass, call):
     async_dispatcher_send(hass, SERVENTS_ENTS_NEW_BINARY_SENSOR)
 
 
-def handle_update_binary_sensor_state(servent_id, state, attributes):
-    live_entity = get_live_entities_from_cache(SERVENT_BINARY_SENSOR, servent_id)
-    live_entity.set_new_state_and_attributes(state, attributes)
-
-
 async def _async_setup_entity(
     hass: HomeAssistant,
     config_entry: ConfigEntry,

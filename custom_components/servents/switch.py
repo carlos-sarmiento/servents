@@ -132,6 +132,11 @@ class ServEntSwitch(SwitchEntity, RestoreEntity):
         self._attr_is_on = False
         self.schedule_update_ha_state()
 
+    def set_new_state_and_attributes(self, state, attributes):
+        self._attr_is_on = state
+        self._attr_extra_state_attributes = attributes
+        self.schedule_update_ha_state()
+
     async def async_added_to_hass(self) -> None:
         """Restore last state."""
         if (last_state := await self.async_get_last_state()) is not None:

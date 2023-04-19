@@ -12,14 +12,14 @@ from .const import (
 from .utilities import (
     get_all_device_ids,
     get_hass_object,
+    get_live_entities_from_cache,
     get_platform_for_servent_id,
     load_config_from_file,
     store_hass_object,
 )
-from .sensor import async_handle_create_sensor, handle_update_sensor_state
+from .sensor import async_handle_create_sensor
 from .binary_sensor import (
     async_handle_create_binary_sensor,
-    handle_update_binary_sensor_state,
 )
 from .switch import async_handle_create_switch
 from .number import async_handle_create_number
@@ -86,10 +86,10 @@ async def handle_update_entity(call: ServiceCall) -> None:
 
     platform = get_platform_for_servent_id(servent_id)
 
-    if platform == SERVENT_SENSOR:
-        handle_update_sensor_state(servent_id, state, attributes)
-    elif platform == SERVENT_BINARY_SENSOR:
-        handle_update_binary_sensor_state(servent_id, state, attributes)
+    if platform is not None and platform is not SERVENT_BUTTON:
+        live_entity = get_live_entities_from_cache(platform, servent_id)
+        live_entity.set_new_state_and_attributes(state, attributes)
+
     else:
         raise Exception("Non Registered ID")
 

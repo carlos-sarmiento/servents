@@ -150,6 +150,11 @@ class ServEntNumber(RestoreNumber):
 
         self._attr_native_step = self.servent_config.get(SERVENT_NUMBER_STEP, 1)
 
+    def set_new_state_and_attributes(self, state, attributes):
+        self._attr_native_value = state
+        self._attr_extra_state_attributes = attributes
+        self.schedule_update_ha_state()
+
     async def async_added_to_hass(self) -> None:
         """Connect to dispatcher listening for entity data notifications."""
 
