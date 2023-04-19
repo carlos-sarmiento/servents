@@ -1,0 +1,12 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Add Code Ents?"
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only a single configuration possible."
+    }
+  }
+}

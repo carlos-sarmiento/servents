@@ -1,0 +1,37 @@
+# Describes the format for available Irrigation Unlimited services
+
+create_entity:
+  name: Create Entity
+  description: Creates a ServEnt entity.
+  fields:
+    type:
+      description: "The type of Entity to create. Must be one of: 'sensor'"
+      example: sensor
+      required: true
+    servent_id:
+      description: The ID to uniquely identify this servent Entity.
+      example: "kitchen-switch-virtual-for-something"
+      required: true
+    name:
+      description: The Name of the entity to create
+      example: "Some Name"
+      required: true
+
+update_state:
+  name: Update State for Entity
+  description: Sets the state for a ServEnt entity
+  fields:
+    servent_id:
+      description: The ID to uniquely identify this servent Entity.
+      example: "kitchen-switch-virtual-for-something"
+      required: true
+    state:
+      description: The state of the entity
+      example: SomeValue
+      required: true
+    attributes:
+      description: Dictionary of additional attributes
+      example:
+        bleh: data
+      required: true
+
