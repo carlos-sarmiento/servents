@@ -1,11 +1,11 @@
 {
   "domain": "servents",
-  "name": "ServEnts - Service Defined Entities  ",
+  "name": "ServEnts - Service Defined Entities",
   "codeowners": ["@carlos-sarmiento"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/carlos-sarmiento/servents/issues",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/carlos-sarmiento/servents/issues",
-  "version": "0.0.2"
+  "version": "0.0.3"
 }

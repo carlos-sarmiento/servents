@@ -34,3 +34,7 @@ update_state:
       example:
         bleh: data
       required: true
+
+cleanup_devices:
+  name: Cleanup Devices
+  description: Removes Devices (and entities) from devices that have not been "created" in the current run of Home Assistant. Use with care, even though entities will be recreated, their IDs will change and any automation that used the ids will break!

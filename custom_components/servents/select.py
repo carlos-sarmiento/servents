@@ -36,8 +36,7 @@ SERVENTS_ENTS_NEW_SELECT = "servents_ents_new_select"
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_handle_create_select(hass, call):
-    data = call.data
+async def async_handle_create_select(hass, data):
     ents = get_ent_config(SERVENTS_CONFIG_SELECTS)
 
     servent_id = data.get(SERVENT_ENTITY)[SERVENT_ID]
@@ -51,11 +50,6 @@ async def async_handle_create_select(hass, call):
     save_config_to_file()
 
     async_dispatcher_send(hass, SERVENTS_ENTS_NEW_SELECT)
-
-
-def handle_update_select_state(servent_id, state, attributes):
-    live_entity = get_live_entities_from_cache(SERVENT_SELECT, servent_id)
-    live_entity.set_new_state_and_attributes(state, attributes)
 
 
 async def _async_setup_entity(
@@ -105,13 +99,13 @@ class ServEntSelect(SelectEntity, RestoreEntity):
 
         # select fixed values
         # When we create a select, we never set an initial value. Value should be set by calling the right service
-        self._attr_extra_state_attributes = None
-
         self._update_servent_entity_config(config, device_config)
         self._attr_unique_id = f"select-{self.servent_config[SERVENT_ID]}"
         self._attr_current_option = self.servent_config.get(
             SERVENT_ENTITY_DEFAULT_STATE, None
         )
+        self.servent_id = self.servent_config[SERVENT_ID]
+        self._attr_extra_state_attributes = {"servent_id": self.servent_id}
 
     def _update_servent_entity_config(self, config, device_config):
         self.servent_config = config
@@ -135,8 +129,9 @@ class ServEntSelect(SelectEntity, RestoreEntity):
 
     def set_new_state_and_attributes(self, state, attributes):
         self._attr_current_option = state
-        self._attr_extra_state_attributes = attributes
-        self.schedule_update_ha_state()
+        if attributes is None:
+            attributes = {}
+        self._attr_extra_state_attributes = attributes | {"servent_id": self.servent_id}
 
     async def async_added_to_hass(self) -> None:
         """Restore last state."""
@@ -146,4 +141,6 @@ class ServEntSelect(SelectEntity, RestoreEntity):
         if (
             last_extra_attributes := await self.async_get_last_extra_data()
         ) is not None:
-            self._attr_extra_state_attributes = last_extra_attributes.as_dict()
+            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
+                "servent_id": self.servent_id
+            }

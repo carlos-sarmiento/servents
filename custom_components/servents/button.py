@@ -37,8 +37,7 @@ SERVENTS_ENTS_NEW_BUTTON = "servents_ents_new_button"
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_handle_create_button(hass, call):
-    data = call.data
+async def async_handle_create_button(hass, data):
     ents = get_ent_config(SERVENTS_CONFIG_BUTTONS)
 
     servent_id = data.get(SERVENT_ENTITY)[SERVENT_ID]
@@ -104,6 +103,8 @@ class ServEntButton(ButtonEntity, RestoreEntity):
         # When we create a button, we never set an initial value. Value should be set by calling the right service
         self._update_servent_entity_config(config, device_config)
         self._attr_unique_id = f"button-{self.servent_config[SERVENT_ID]}"
+        self.servent_id = self.servent_config[SERVENT_ID]
+        self._attr_extra_state_attributes = {"servent_id": self.servent_id}
 
     def _update_servent_entity_config(self, config, device_config):
         self.servent_config = config
@@ -120,7 +121,7 @@ class ServEntButton(ButtonEntity, RestoreEntity):
 
         # Button Attributes
         self.servent_event = self.servent_config[SERVENT_BUTTON_EVENT]
-        self.event_data = self.servent_config[SERVENT_BUTTON_EVENT_DATA]
+        self.event_data = self.servent_config.get(SERVENT_BUTTON_EVENT_DATA, {})
 
         self._attr_device_class = toEnum(
             ButtonDeviceClass, self.servent_config.get(SERVENT_DEVICE_CLASS, None)
@@ -128,6 +129,13 @@ class ServEntButton(ButtonEntity, RestoreEntity):
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        await self._hass.bus.async_fire(
-            f"servent.{self.servent_event}", self.event_data
-        )
+        self._hass.bus.async_fire(f"servent.{self.servent_event}", self.event_data)
+
+    async def async_added_to_hass(self) -> None:
+        """Restore last state."""
+        if (
+            last_extra_attributes := await self.async_get_last_extra_data()
+        ) is not None:
+            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
+                "servent_id": self.servent_id
+            }

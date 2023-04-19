@@ -2,6 +2,7 @@ import logging
 
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.util import yaml
+import copy
 
 from .const import (
     DOMAIN,
@@ -49,8 +50,16 @@ def stripNone(data):
         return data
 
 
+def servent_reset_config():
+    global servent_current_config
+    servent_current_config = {}
+
+
 def get_ent_config(type):
     global servent_current_config
+    if SERVENTS_CONFIG_ENTS not in servent_current_config:
+        servent_current_config[SERVENTS_CONFIG_ENTS] = {}
+
     config = servent_current_config[SERVENTS_CONFIG_ENTS].get(type)
     if config is None:
         servent_current_config[SERVENTS_CONFIG_ENTS][type] = {}
@@ -81,7 +90,8 @@ def load_config_from_file():
     except FileNotFoundError:
         save_config_to_file()
 
-    servent_current_config = default_config | stripNone((config_from_file or {}))
+    servent_current_config = copy.deepcopy(default_config)
+    # servent_current_config = default_config | stripNone((config_from_file or {}))
 
 
 servent_hass_obj = None

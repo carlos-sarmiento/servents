@@ -36,8 +36,7 @@ SERVENTS_ENTS_NEW_SWITCH = "servents_ents_new_switch"
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_handle_create_switch(hass, call):
-    data = call.data
+async def async_handle_create_switch(hass, data):
     ents = get_ent_config(SERVENTS_CONFIG_SWITCHES)
 
     servent_id = data.get(SERVENT_ENTITY)[SERVENT_ID]
@@ -100,11 +99,11 @@ class ServEntSwitch(SwitchEntity, RestoreEntity):
 
         # switch fixed values
         # When we create a switch, we never set an initial value. Value should be set by calling the right service
-
-        self._attr_extra_state_attributes = None
         self._update_servent_entity_config(config, device_config)
         self._attr_unique_id = f"switch-{self.servent_config[SERVENT_ID]}"
         self._attr_is_on = self.servent_config.get(SERVENT_ENTITY_DEFAULT_STATE, None)
+        self.servent_id = self.servent_config[SERVENT_ID]
+        self._attr_extra_state_attributes = {"servent_id": self.servent_id}
 
     def _update_servent_entity_config(self, config, device_config):
         self.servent_config = config
@@ -134,7 +133,9 @@ class ServEntSwitch(SwitchEntity, RestoreEntity):
 
     def set_new_state_and_attributes(self, state, attributes):
         self._attr_is_on = state
-        self._attr_extra_state_attributes = attributes
+        if attributes is None:
+            attributes = {}
+        self._attr_extra_state_attributes = attributes | {"servent_id": self.servent_id}
         self.schedule_update_ha_state()
 
     async def async_added_to_hass(self) -> None:
