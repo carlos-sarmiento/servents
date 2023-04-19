@@ -1,10 +1,11 @@
-from .const import DOMAIN, SERVENT_SENSOR, SERVENT_BINARY_SENSOR, SERVENT_SWITCH, SERVENT_NUMBER, SERVENT_SELECT, SERVENT_ENTITY, SERVENT_ID
+from .const import DOMAIN, SERVENT_SENSOR, SERVENT_BINARY_SENSOR, SERVENT_BUTTON, SERVENT_SWITCH, SERVENT_NUMBER, SERVENT_SELECT, SERVENT_ENTITY, SERVENT_ID
 from .utilities import get_all_device_ids, get_hass_object, get_platform_for_servent_id, load_config_from_file, store_hass_object
 from .sensor import async_handle_create_sensor, handle_update_sensor_state
 from .binary_sensor import async_handle_create_binary_sensor, handle_update_binary_sensor_state
 from .switch import async_handle_create_switch
 from .number import async_handle_create_number
 from .select import async_handle_create_select
+from .button import async_handle_create_button
 
 import logging
 
@@ -46,6 +47,9 @@ async def handle_create_entity(call: ServiceCall) -> None:
         await async_handle_create_number(hass, call)
     elif type == SERVENT_SELECT:
         await async_handle_create_select(hass, call)
+    elif type == SERVENT_BUTTON:
+        await async_handle_create_button(hass, call)
+
     else:
         raise Exception("Invalid Type for Entity")
 
