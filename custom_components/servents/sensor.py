@@ -2,7 +2,6 @@ import logging
 
 from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
@@ -10,15 +9,14 @@ from homeassistant.helpers.dispatcher import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .entity import ServEntEntity
+
 from .const import (
     SERVENT_DEVICE,
     SERVENT_DEVICE_CLASS,
     SERVENT_ENTITY,
-    SERVENT_ENTITY_CATEGORY,
-    SERVENT_ENTITY_DEFAULT_STATE,
     SERVENT_ENUM_OPTIONS,
     SERVENT_ID,
-    SERVENT_NAME,
     SERVENT_SENSOR,
     SERVENT_STATE_CLASS,
     SERVENT_UNIT_OF_MEASUREMENT,
@@ -26,7 +24,6 @@ from .const import (
 )
 from .utilities import (
     add_entity_to_cache,
-    create_device_info,
     get_ent_config,
     get_live_entities_from_cache,
     save_config_to_file,
@@ -74,7 +71,7 @@ async def _async_setup_entity(
             live_entity._update_servent_entity_config(
                 ent_config[SERVENT_ENTITY], ent_config[SERVENT_DEVICE]
             )
-            live_entity.schedule_update_ha_state()
+            live_entity.verified_schedule_update_ha_state()
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -92,36 +89,11 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     await _async_setup_entity(hass, config_entry, async_add_entities)
 
 
-class ServEntSensor(RestoreSensor):
+class ServEntSensor(ServEntEntity, RestoreSensor):
     def __init__(self, config, device_config):
-        # entity attributes
-        # Fixed Values
-        self._attr_should_poll = False
-        self._attr_has_entity_name = True
+        self.servent_configure(config, device_config)
 
-        # sensor fixed values
-        # When we create a sensor, we never set an initial value. Value should be set by calling the right service
-        self._update_servent_entity_config(config, device_config)
-        self._attr_unique_id = f"sensor-{self.servent_config[SERVENT_ID]}"
-        self._attr_native_value = self.servent_config.get(
-            SERVENT_ENTITY_DEFAULT_STATE, None
-        )
-        self.servent_id = self.servent_config[SERVENT_ID]
-        self._attr_extra_state_attributes = {"servent_id": self.servent_id}
-
-    def _update_servent_entity_config(self, config, device_config):
-        self.servent_config = config
-        self.servent_device_config = device_config
-
-        # Absolutely Required Attributes
-        self._attr_name = self.servent_config[SERVENT_NAME]
-
-        self._attr_device_info = create_device_info(self.servent_device_config)
-
-        self._attr_entity_category = toEnum(
-            EntityCategory, self.servent_config.get(SERVENT_ENTITY_CATEGORY, None)
-        )
-
+    def update_specific_entity_config(self):
         # Sensor Attributes
         self._attr_device_class = toEnum(
             SensorDeviceClass, self.servent_config.get(SERVENT_DEVICE_CLASS, None)
@@ -132,7 +104,6 @@ class ServEntSensor(RestoreSensor):
         )
 
         self._attr_state_class = self.servent_config.get(SERVENT_STATE_CLASS, None)
-
         self._attr_options = self.servent_config.get(SERVENT_ENUM_OPTIONS, None)
 
     def set_new_state_and_attributes(self, state, attributes):
@@ -143,13 +114,7 @@ class ServEntSensor(RestoreSensor):
 
     async def async_added_to_hass(self) -> None:
         """Connect to dispatcher listening for entity data notifications."""
-
         if (last_sensor_data := await self.async_get_last_sensor_data()) is not None:
             self._attr_native_value = last_sensor_data.native_value
 
-        if (
-            last_extra_attributes := await self.async_get_last_extra_data()
-        ) is not None:
-            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
-                "servent_id": self.servent_id
-            }
+        await self.restore_attributes()

@@ -2,22 +2,19 @@ import logging
 
 from homeassistant.components.number import NumberDeviceClass, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import (
     async_dispatcher_connect,
     async_dispatcher_send,
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from .entity import ServEntEntity
 
 from .const import (
     SERVENT_DEVICE,
     SERVENT_DEVICE_CLASS,
     SERVENT_ENTITY,
-    SERVENT_ENTITY_CATEGORY,
-    SERVENT_ENTITY_DEFAULT_STATE,
     SERVENT_ID,
-    SERVENT_NAME,
     SERVENT_NUMBER,
     SERVENT_NUMBER_MAX_VALUE,
     SERVENT_NUMBER_MIN_VALUE,
@@ -28,7 +25,6 @@ from .const import (
 )
 from .utilities import (
     add_entity_to_cache,
-    create_device_info,
     get_ent_config,
     get_live_entities_from_cache,
     save_config_to_file,
@@ -76,7 +72,7 @@ async def _async_setup_entity(
             live_entity._update_servent_entity_config(
                 ent_config[SERVENT_ENTITY], ent_config[SERVENT_DEVICE]
             )
-            live_entity.schedule_update_ha_state()
+            live_entity.verified_schedule_update_ha_state()
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -94,41 +90,15 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     await _async_setup_entity(hass, config_entry, async_add_entities)
 
 
-class ServEntNumber(RestoreNumber):
+class ServEntNumber(ServEntEntity, RestoreNumber):
     def __init__(self, config, device_config):
-        # entity attributes
-        # Fixed Values
-        self._attr_should_poll = False
-        self._attr_has_entity_name = True
-
-        # number fixed values
-        # When we create a number, we never set an initial value. Value should be set by calling the right service
-
-        self._update_servent_entity_config(config, device_config)
-        self._attr_unique_id = f"number-{self.servent_config[SERVENT_ID]}"
-        self._attr_native_value = self.servent_config.get(
-            SERVENT_ENTITY_DEFAULT_STATE, self._attr_native_value
-        )
-        self.servent_id = self.servent_config[SERVENT_ID]
-        self._attr_extra_state_attributes = {"servent_id": self.servent_id}
+        self.servent_configure(config, device_config)
 
     def set_native_value(self, value: float) -> None:
         self._attr_native_value = value
-        self.schedule_update_ha_state()
+        self.verified_schedule_update_ha_state()
 
-    def _update_servent_entity_config(self, config, device_config):
-        self.servent_config = config
-        self.servent_device_config = device_config
-
-        # Absolutely Required Attributes
-        self._attr_name = self.servent_config[SERVENT_NAME]
-
-        self._attr_device_info = create_device_info(self.servent_device_config)
-
-        self._attr_entity_category = toEnum(
-            EntityCategory, self.servent_config.get(SERVENT_ENTITY_CATEGORY, None)
-        )
-
+    def update_specific_entity_config(self):
         # Number Attributes
         self._attr_device_class = toEnum(
             NumberDeviceClass, self.servent_config.get(SERVENT_DEVICE_CLASS, None)
@@ -162,9 +132,4 @@ class ServEntNumber(RestoreNumber):
         if (last_number_data := await self.async_get_last_number_data()) is not None:
             self._attr_native_value = last_number_data.native_value
 
-        if (
-            last_extra_attributes := await self.async_get_last_extra_data()
-        ) is not None:
-            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
-                "servent_id": self.servent_id
-            }
+        await self.restore_attributes()

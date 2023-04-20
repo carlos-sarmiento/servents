@@ -93,7 +93,7 @@ async def handle_update_entity(call: ServiceCall) -> None:
         live_entity.set_new_state_and_attributes(state, attributes)
         try:
             if live_entity.hass is not None:
-                live_entity.schedule_update_ha_state()
+                live_entity.verified_schedule_update_ha_state()
         except AttributeError:
             pass
 
