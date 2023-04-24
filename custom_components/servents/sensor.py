@@ -8,6 +8,8 @@ from homeassistant.helpers.dispatcher import (
     async_dispatcher_send,
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from datetime import datetime
+import pytz
 
 from .entity import ServEntEntity
 
@@ -107,6 +109,9 @@ class ServEntSensor(ServEntEntity, RestoreSensor):
         self._attr_options = self.servent_config.get(SERVENT_ENUM_OPTIONS, None)
 
     def set_new_state_and_attributes(self, state, attributes):
+        if state is not None and self._attr_device_class in [SensorDeviceClass.DATE, SensorDeviceClass.TIMESTAMP]:
+            state = datetime.fromtimestamp(int(state), pytz.utc)
+
         self._attr_native_value = state
         if attributes is None:
             attributes = {}
