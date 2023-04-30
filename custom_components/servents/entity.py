@@ -17,7 +17,7 @@ from .utilities import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class ServEntEntity:
+class ServEntEntityAttributes:
     def servent_configure(self, config, device_config):
         # entity attributes
         # Fixed Values
@@ -56,6 +56,8 @@ class ServEntEntity:
     def set_new_state_and_attributes(self, state, attributes):
         pass
 
+
+class ServEntEntity(ServEntEntityAttributes):
     def verified_schedule_update_ha_state(self):
         if self.hass is not None:
             self.schedule_update_ha_state()

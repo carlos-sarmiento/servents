@@ -8,6 +8,7 @@ from .const import (
     SERVENT_SELECT,
     SERVENT_ENTITY,
     SERVENT_ID,
+    SERVENT_THRESHOLD_BINARY_SENSOR,
 )
 from .utilities import (
     get_all_device_ids,
@@ -65,7 +66,7 @@ async def handle_create_entity(call: ServiceCall) -> None:
 
     if type == SERVENT_SENSOR:
         await async_handle_create_sensor(hass, data)
-    elif type == SERVENT_BINARY_SENSOR:
+    elif type in [SERVENT_BINARY_SENSOR, SERVENT_THRESHOLD_BINARY_SENSOR]:
         await async_handle_create_binary_sensor(hass, data)
     elif type == SERVENT_SWITCH:
         await async_handle_create_switch(hass, data)

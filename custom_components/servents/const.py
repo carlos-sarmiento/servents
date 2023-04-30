@@ -21,6 +21,10 @@ SERVENT_UNIT_OF_MEASUREMENT = "unit_of_measurement"
 SERVENT_STATE_CLASS = "state_class"
 SERVENT_ENUM_OPTIONS = "options"
 
+SERVENT_SUBTYPE = "subtype"
+
+SERVENT_THRESHOLD_BINARY_SENSOR = "threshold"
+
 SERVENT_ENTITY = "entity"
 SERVENT_DEVICE = "device"
 SERVENT_SENSOR = "sensor"
