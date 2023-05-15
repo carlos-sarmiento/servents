@@ -61,7 +61,7 @@ async def handle_create_entity(call: ServiceCall) -> None:
 
     if platform is not None and platform != type:
         raise Exception(
-            f"Can't change the platform '{platform}' for an existing Ent: {servent_id}"
+            f"Can't change the platform '{platform}' to '{type}' for an existing Ent: {servent_id}"
         )
 
     if type == SERVENT_SENSOR:

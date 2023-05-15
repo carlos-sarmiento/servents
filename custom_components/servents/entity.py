@@ -69,3 +69,15 @@ class ServEntEntity(ServEntEntityAttributes):
             self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
                 "servent_id": self.servent_id
             }
+
+
+class ServEntHelperMixin(ServEntEntityAttributes):
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return self._attr_name
+
+    @property
+    def extra_state_attributes(self):
+        extra_attributes = super().extra_state_attributes or {}
+        return extra_attributes | {"servent_id": self.servent_id}

@@ -14,10 +14,9 @@ from homeassistant.helpers.dispatcher import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
-from .entity import ServEntEntity, ServEntEntityAttributes
+from .entity import ServEntEntity, ServEntEntityAttributes, ServEntHelperMixin
 
 from .const import (
-    SERVENT_BINARY_SENSOR,
     SERVENT_DEVICE,
     SERVENT_DEVICE_CLASS,
     SERVENT_ENTITY,
@@ -62,9 +61,8 @@ async def _async_setup_entity(
     ents = get_ent_config(SERVENTS_CONFIG_BINARY_SENSORS)
 
     for servent_id, ent_config in ents.items():
-        if get_live_entities_from_cache(SERVENT_BINARY_SENSOR, servent_id) is None:
-            type = ent_config[SERVENT_ENTITY].get("type", None)
-
+        type = ent_config[SERVENT_ENTITY].get("type", None)
+        if get_live_entities_from_cache(type, servent_id) is None:
             if type == SERVENT_THRESHOLD_BINARY_SENSOR:
                 entity = ServEntThresholdBinarySensor(
                     hass, ent_config[SERVENT_ENTITY], ent_config[SERVENT_DEVICE]
@@ -74,13 +72,11 @@ async def _async_setup_entity(
                     ent_config[SERVENT_ENTITY], ent_config[SERVENT_DEVICE]
                 )
 
-            add_entity_to_cache(SERVENT_BINARY_SENSOR, servent_id, entity)
+            add_entity_to_cache(type, servent_id, entity)
             async_add_entities([entity])
 
         else:
-            live_entity = get_live_entities_from_cache(
-                SERVENT_BINARY_SENSOR, servent_id
-            )
+            live_entity = get_live_entities_from_cache(type, servent_id)
             live_entity._update_servent_entity_config(
                 ent_config[SERVENT_ENTITY], ent_config[SERVENT_DEVICE]
             )
@@ -131,7 +127,7 @@ class ServEntBinarySensor(ServEntEntity, BinarySensorEntity, RestoreEntity):
         await self.restore_attributes()
 
 
-class ServEntThresholdBinarySensor(ServEntEntityAttributes, ThresholdSensor):
+class ServEntThresholdBinarySensor(ServEntHelperMixin, ThresholdSensor):
     def __init__(self, hass, config, device_config):
         super().__init__(
             hass=hass,
@@ -152,16 +148,6 @@ class ServEntThresholdBinarySensor(ServEntEntityAttributes, ThresholdSensor):
         )
 
     @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return self._attr_name
-
-    @property
     def device_class(self) -> BinarySensorDeviceClass | None:
         """Return the sensor class of the sensor."""
         return self._attr_device_class
-
-    @property
-    def extra_state_attributes(self):
-        extra_attributes = super().extra_state_attributes or {}
-        return extra_attributes | {"servent_id": self.servent_id}
