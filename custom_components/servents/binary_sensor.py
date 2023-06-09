@@ -139,6 +139,7 @@ class ServEntThresholdBinarySensor(ServEntHelperMixin, ThresholdSensor):
             device_class=None,
             unique_id="WillBeOverriden",
         )
+        self.source_entity_id = config["entity_id"]
         self.servent_configure(config, device_config)
 
     def update_specific_entity_config(self):
@@ -151,3 +152,11 @@ class ServEntThresholdBinarySensor(ServEntHelperMixin, ThresholdSensor):
     def device_class(self) -> BinarySensorDeviceClass | None:
         """Return the sensor class of the sensor."""
         return self._attr_device_class
+
+    @property
+    def extra_state_attributes(self):
+        extra_attributes = super().extra_state_attributes or {}
+        return extra_attributes | {
+            "servent_id": self.servent_id,
+            "source_entity_id": self.source_entity_id,
+        }

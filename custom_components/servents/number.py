@@ -108,7 +108,7 @@ class ServEntNumber(ServEntEntity, RestoreNumber):
             SERVENT_UNIT_OF_MEASUREMENT, None
         )
 
-        self._attr_mode = self.servent_config.get(SERVENT_NUMBER_MODE, self._attr_mode)
+        self._attr_mode = self.servent_config.get(SERVENT_NUMBER_MODE, "auto")
 
         self._attr_native_max_value = self.servent_config.get(
             SERVENT_NUMBER_MAX_VALUE, 100

@@ -107,6 +107,6 @@ class ServEntSelect(ServEntEntity, SelectEntity, RestoreEntity):
     async def async_added_to_hass(self) -> None:
         """Restore last state."""
         if (last_state := await self.async_get_last_state()) is not None:
-            self._attr_is_on = last_state.state
+            self._attr_current_option = last_state.state
 
         await self.restore_attributes()
