@@ -3,7 +3,7 @@ DOMAIN_DATA = "servents_data"
 VERSION = "0.0.1"
 CONF_NAME = "ServEnts - Service Defined Entities"
 
-
+SERVENT_ENTITY_FIXED_ATTRIBUTES = "fixed_attributes"
 SERVENTS_CONFIG_ENTS = "ents"
 SERVENTS_CONFIG_SENSORS = "sensors"
 SERVENTS_CONFIG_BINARY_SENSORS = "binary_sensors"

@@ -8,6 +8,7 @@ from .const import (
     SERVENT_ID,
     SERVENT_NAME,
     SERVENT_ENTITY_DISABLED_BY_DEFAULT,
+    SERVENT_ENTITY_FIXED_ATTRIBUTES,
 )
 from .utilities import (
     create_device_info,
@@ -29,12 +30,15 @@ class ServEntEntityAttributes:
         self._update_servent_entity_config(config, device_config)
         self._attr_unique_id = f"sensor-{self.servent_config[SERVENT_ID]}"
         self.servent_id = self.servent_config[SERVENT_ID]
+        self.fixed_attributes = self.servent_config.get(
+            SERVENT_ENTITY_FIXED_ATTRIBUTES, {}
+        ) | {"servent_id": self.servent_id}
         self.set_new_state_and_attributes(
             self.servent_config.get(SERVENT_ENTITY_DEFAULT_STATE, None),
-            {"servent_id": self.servent_id},
+            self.fixed_attributes,
         )
-        self._attr_entity_registry_enabled_default = (
-            not self.servent_config.get(SERVENT_ENTITY_DISABLED_BY_DEFAULT, False),
+        self._attr_entity_registry_enabled_default = not self.servent_config.get(
+            SERVENT_ENTITY_DISABLED_BY_DEFAULT, False
         )
 
     def _update_servent_entity_config(self, config, device_config):

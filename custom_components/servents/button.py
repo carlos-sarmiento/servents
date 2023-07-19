@@ -113,9 +113,11 @@ class ServEntButton(ServEntEntity, ButtonEntity, RestoreEntity):
         if (
             last_extra_attributes := await self.async_get_last_extra_data()
         ) is not None:
-            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
-                "servent_id": self.servent_id
-            }
+            self._attr_extra_state_attributes = (
+                last_extra_attributes.as_dict()
+                | self.fixed_attributes
+                | {"servent_id": self.servent_id}
+            )
 
     @property
     def name(self) -> str:
@@ -125,4 +127,6 @@ class ServEntButton(ServEntEntity, ButtonEntity, RestoreEntity):
     @property
     def extra_state_attributes(self):
         extra_attributes = super().extra_state_attributes or {}
-        return extra_attributes | {"servent_id": self.servent_id}
+        return (
+            self.fixed_attributes | extra_attributes | {"servent_id": self.servent_id}
+        )

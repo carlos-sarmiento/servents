@@ -115,7 +115,9 @@ class ServEntBinarySensor(ServEntEntity, BinarySensorEntity, RestoreEntity):
         self._attr_is_on = state
         if attributes is None:
             attributes = {}
-        self._attr_extra_state_attributes = attributes | {"servent_id": self.servent_id}
+        self._attr_extra_state_attributes = (
+            self.fixed_attributes | attributes | {"servent_id": self.servent_id}
+        )
 
     async def async_added_to_hass(self) -> None:
         """Restore last state."""
