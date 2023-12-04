@@ -1,16 +1,25 @@
+[project]
+requires-python = ">=3.11"
+
 [tool.poetry]
 name = "servents"
 version = "0.1.0"
 description = "ServEnts - Service Defined Entities"
-authors = ["@carlos-sarmiento"]
+authors = ["Carlos G. Sarmiento <carlos@sarmiento.io>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.11"
 
 [tool.poetry.group.dev.dependencies]
-homeassistant = "^2023.7.0"
+homeassistant = "^2023.11.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "ARG"]
