@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from homeassistant.helpers.entity import DeviceInfo
 
@@ -9,9 +10,7 @@ from .const import (
     DOMAIN,
 )
 
-AllowedEntityTypes = Literal[
-    "sensor", "binary_sensor", "threshold_binary_sensor", "switch", "number", "button", "select"
-]
+AllowedEntityTypes = Literal["sensor", "binary_sensor", "threshold", "switch", "number", "button", "select"]
 
 
 @dataclass
@@ -99,12 +98,14 @@ class ServentThresholdBinarySensorDefinition(BaseServentEntityDefinition):
 EntityTypeToDataclassMap: dict[AllowedEntityTypes, type] = {
     "sensor": ServentSensorDefinition,
     "binary_sensor": ServentBinarySensorDefinition,
-    "threshold_binary_sensor": ServentThresholdBinarySensorDefinition,
+    "threshold": ServentThresholdBinarySensorDefinition,
     "switch": ServentSwitchDefinition,
     "number": ServentNumberDefinition,
     "button": ServentButtonDefinition,
     "select": ServentSelectDefinition,
 }
+
+T = TypeVar("T")
 
 
 def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
@@ -117,8 +118,14 @@ def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
         raise Exception(f"entity type: {entity_type} is not supported")
 
     if "device_definition" in data and data["device_definition"]:
-        data["device_definition"] = ServentDeviceDefinition(**data["device_definition"])
+        data["device_definition"] = clean_params_and_build(ServentDeviceDefinition, data["device_definition"])
 
     builder = EntityTypeToDataclassMap[entity_type]
 
-    return builder(**data)
+    return clean_params_and_build(builder, data)
+
+
+def clean_params_and_build(builder: type[T], data: dict) -> T:
+    # remove whatever extraneous information might be on the dict that is not part of the constructor
+    clean_data = {k: v for k, v in data.items() if k in inspect.signature(builder).parameters}
+    return builder(**clean_data)
