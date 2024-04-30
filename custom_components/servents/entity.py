@@ -1,25 +1,23 @@
 import logging
+from typing import Any, Generic, TypeVar
 
 from homeassistant.const import EntityCategory
+from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import (
-    SERVENT_ENTITY_CATEGORY,
-    SERVENT_ENTITY_DEFAULT_STATE,
-    SERVENT_ID,
-    SERVENT_NAME,
-    SERVENT_ENTITY_DISABLED_BY_DEFAULT,
-    SERVENT_ENTITY_FIXED_ATTRIBUTES,
-)
-from .utilities import (
-    create_device_info,
-    toEnum,
-)
+from .data_carriers import BaseServentEntityDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
+T = TypeVar("T", bound=BaseServentEntityDefinition)
 
-class ServEntEntityAttributes:
-    def servent_configure(self, config, device_config):
+
+class ServEntEntityAttributes(Generic[T], Entity):
+    servent_config: T
+    servent_id: str
+    fixed_attributes: dict[str, Any]
+
+    def servent_configure(self, config: T) -> None:
         # entity attributes
         # Fixed Values
         self._attr_should_poll = False
@@ -27,29 +25,26 @@ class ServEntEntityAttributes:
 
         # sensor fixed values
         # When we create a sensor, we never set an initial value. Value should be set by calling the right service
-        self._update_servent_entity_config(config, device_config)
-        self._attr_unique_id = f"sensor-{self.servent_config[SERVENT_ID]}"
-        self.servent_id = self.servent_config[SERVENT_ID]
-        self.fixed_attributes = self.servent_config.get(
-            SERVENT_ENTITY_FIXED_ATTRIBUTES, {}
-        ) | {"servent_id": self.servent_id}
+        self._update_servent_entity_config(config)
+        self._attr_unique_id = f"sensor-{self.servent_config.servent_id}"
+        self.servent_id = self.servent_config.servent_id
+        self.fixed_attributes = self.servent_config.fixed_attributes | {"servent_id": self.servent_id}
         self.set_new_state_and_attributes(
-            self.servent_config.get(SERVENT_ENTITY_DEFAULT_STATE, None),
+            self.servent_config.default_state,
             self.fixed_attributes,
         )
-        self._attr_entity_registry_enabled_default = not self.servent_config.get(
-            SERVENT_ENTITY_DISABLED_BY_DEFAULT, False
-        )
+        self._attr_entity_registry_enabled_default = not self.servent_config.disabled_by_default
 
-    def _update_servent_entity_config(self, config, device_config):
+    def _update_servent_entity_config(self, config: T) -> None:
         self.servent_config = config
-        self.servent_device_config = device_config
 
         # Absolutely Required Attributes
-        self._attr_name = self.servent_config[SERVENT_NAME]
-        self._attr_device_info = create_device_info(self.servent_device_config)
-        self._attr_entity_category = toEnum(
-            EntityCategory, self.servent_config.get(SERVENT_ENTITY_CATEGORY, None)
+        self._attr_name = self.servent_config.name
+        self._attr_device_info = (
+            self.servent_config.device_definition.get_device_info() if self.servent_config.device_definition else None
+        )
+        self._attr_entity_category = (
+            EntityCategory(self.servent_config.entity_category) if self.servent_config.entity_category else None
         )
 
         self.update_specific_entity_config()
@@ -61,27 +56,11 @@ class ServEntEntityAttributes:
         pass
 
 
-class ServEntEntity(ServEntEntityAttributes):
+class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
     def verified_schedule_update_ha_state(self):
         if self.hass is not None:
             self.schedule_update_ha_state()
 
     async def restore_attributes(self):
-        if (
-            last_extra_attributes := await self.async_get_last_extra_data()
-        ) is not None:
-            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {
-                "servent_id": self.servent_id
-            }
-
-
-class ServEntHelperMixin(ServEntEntityAttributes):
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return self._attr_name
-
-    @property
-    def extra_state_attributes(self):
-        extra_attributes = super().extra_state_attributes or {}
-        return extra_attributes | {"servent_id": self.servent_id}
+        if (last_extra_attributes := await self.async_get_last_extra_data()) is not None:
+            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {"servent_id": self.servent_id}
