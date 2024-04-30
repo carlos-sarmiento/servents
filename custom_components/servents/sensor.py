@@ -34,7 +34,7 @@ class ServEntSensor(ServEntEntity[ServentSensorDefinition], RestoreSensor):
 
         self._attr_native_unit_of_measurement = self.servent_config.unit_of_measurement
         self._attr_state_class = self.servent_config.state_class
-        self._attr_options = self.servent_config.enum_options
+        self._attr_options = self.servent_config.options
 
     def set_new_state_and_attributes(self, state, attributes):
         if state is not None and self._attr_device_class in [SensorDeviceClass.DATE, SensorDeviceClass.TIMESTAMP]:

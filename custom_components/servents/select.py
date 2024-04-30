@@ -26,7 +26,7 @@ class ServEntSelect(ServEntEntity[ServentSelectDefinition], SelectEntity, Restor
 
     def update_specific_entity_config(self):
         # Select Attributes
-        self._attr_options = self.servent_config.enum_options
+        self._attr_options = self.servent_config.options
 
     def select_option(self, option: str) -> None:
         self._attr_current_option = option

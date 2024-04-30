@@ -19,8 +19,8 @@ class BaseServentEntityDefinition:
     entity_type: AllowedEntityTypes
     servent_id: str
     name: str
-    device_definition: ServentDeviceDefinition | None
-    entity_category: str | None
+    device_definition: ServentDeviceDefinition | None = None
+    entity_category: str | None = None
     fixed_attributes: dict[str, Any] = field(default_factory=dict)
     default_state: Any | None = None
     disabled_by_default: bool = False
@@ -52,7 +52,7 @@ class ServentSensorDefinition(BaseServentEntityDefinition):
     device_class: str | None = None
     unit_of_measurement: str | None = None
     state_class: str | None = None
-    enum_options: list[str] | None = None
+    options: list[str] | None = None
 
 
 @dataclass
@@ -62,17 +62,17 @@ class ServentSwitchDefinition(BaseServentEntityDefinition):
 
 @dataclass
 class ServentSelectDefinition(BaseServentEntityDefinition):
-    enum_options: list[str] = field(default_factory=list)
+    options: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ServentNumberDefinition(BaseServentEntityDefinition):
     device_class: str | None = None
     unit_of_measurement: str | None = None
-    number_mode: str = "auto"
-    max_value: float = 100
-    min_value: float = 0
-    step: float = 1
+    mode: str | None = None
+    max_value: float | None = None
+    min_value: float | None = None
+    step: float | None = None
 
 
 @dataclass

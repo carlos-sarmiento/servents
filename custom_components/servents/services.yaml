@@ -4,17 +4,9 @@ create_entity:
   name: Create Entity
   description: Creates a ServEnt entity.
   fields:
-    type:
-      description: "The type of Entity to create"
+    entities:
+      description: "The entities to create"
       example: sensor
-      required: true
-    entity:
-      description: The ID to uniquely identify this servent Entity.
-      example: "kitchen-switch-virtual-for-something"
-      required: true
-    device:
-      description: The Name of the entity to create
-      example: "Some Name"
       required: true
 
 

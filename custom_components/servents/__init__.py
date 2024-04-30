@@ -32,9 +32,11 @@ async def handle_create_entity(call: ServiceCall) -> None:
     if not entities_list:
         raise Exception("Call does not define any entities")
 
-    for definition in entities_list:
+    entities = [to_dataclass(x) for x in entities_list]
+
+    for definition in entities:
         try:
-            get_registrar().register_definition(to_dataclass(definition))
+            get_registrar().register_definition(definition)
         except Exception as e:
             _LOGGER.error(e)
 
