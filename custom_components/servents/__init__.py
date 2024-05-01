@@ -10,7 +10,7 @@ from custom_components.servents.registrar import get_registrar, reset_registrar
 from .const import (
     DOMAIN,
 )
-from .data_carriers import to_dataclass
+from .data_carriers import ServentUpdateEntityDefinition, clean_params_and_build, to_dataclass
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,19 +45,18 @@ async def handle_create_entity(call: ServiceCall) -> None:
 
 async def handle_update_entity(call: ServiceCall) -> None:
     """Handle the service call."""
-    servent_id = call.data["servent_id"]
-    state = call.data["state"]
-    attributes = call.data.get("attributes", {})
 
-    live_entity = get_registrar().get_live_entity_for_servent_id(servent_id)
+    data = clean_params_and_build(ServentUpdateEntityDefinition, call.data)
+
+    live_entity = get_registrar().get_live_entity_for_servent_id(data.servent_id)
 
     if live_entity:
-        live_entity.set_new_state_and_attributes(state, attributes)
+        live_entity.set_new_state_and_attributes(data.state, data.attributes)
         live_entity.verified_schedule_update_ha_state()
 
     else:
         _LOGGER.warn(
-            f"Tried to update a Non Registered ID {servent_id}. This can happen if you are sending an update event immediately after a creation event and the ID hasn't been registered yet"
+            f"Tried to update a Non Registered ID {data.servent_id}. This can happen if you are sending an update event immediately after a creation event and the ID hasn't been registered yet"
         )
 
 

@@ -28,7 +28,6 @@ class ServEntEntityAttributes(Generic[T], Entity):
         self._update_servent_entity_config(config)
         self._attr_unique_id = f"sensor-{self.servent_config.servent_id}"
         self.servent_id = self.servent_config.servent_id
-        self.fixed_attributes = self.servent_config.fixed_attributes | {"servent_id": self.servent_id}
         self.set_new_state_and_attributes(
             self.servent_config.default_state,
             self.fixed_attributes,
@@ -46,13 +45,14 @@ class ServEntEntityAttributes(Generic[T], Entity):
         self._attr_entity_category = (
             EntityCategory(self.servent_config.entity_category) if self.servent_config.entity_category else None
         )
+        self.fixed_attributes = self.servent_config.fixed_attributes | {"servent_id": self.servent_id}
 
         self.update_specific_entity_config()
 
-    def update_specific_entity_config(self):
+    def update_specific_entity_config(self) -> None:
         pass
 
-    def set_new_state_and_attributes(self, state, attributes):
+    def set_new_state_and_attributes(self, state, attributes) -> None:
         pass
 
 
@@ -66,11 +66,11 @@ class ServentExtraData(ExtraStoredData):
 
 
 class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
-    def verified_schedule_update_ha_state(self):
+    def verified_schedule_update_ha_state(self) -> None:
         if self.hass is not None:
             self.schedule_update_ha_state()
 
-    async def restore_attributes(self):
+    async def restore_attributes(self) -> None:
         if (last_extra_attributes := await self.async_get_last_extra_data()) is not None:
             self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {"servent_id": self.servent_id}
 

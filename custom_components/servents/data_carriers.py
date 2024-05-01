@@ -125,6 +125,13 @@ def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
     return clean_params_and_build(builder, data)
 
 
+@dataclass
+class ServentUpdateEntityDefinition:
+    servent_id: str
+    state: Any | None
+    attributes: dict = field(default_factory=dict)
+
+
 def clean_params_and_build(builder: type[T], data: dict) -> T:
     # remove whatever extraneous information might be on the dict that is not part of the constructor
     clean_data = {k: v for k, v in data.items() if k in inspect.signature(builder).parameters}
