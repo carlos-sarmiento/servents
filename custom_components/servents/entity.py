@@ -3,7 +3,7 @@ from typing import Any, Generic, TypeVar
 
 from homeassistant.const import EntityCategory
 from homeassistant.helpers.entity import Entity
-from homeassistant.helpers.restore_state import RestoreEntity
+from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .data_carriers import BaseServentEntityDefinition
 
@@ -56,6 +56,15 @@ class ServEntEntityAttributes(Generic[T], Entity):
         pass
 
 
+class ServentExtraData(ExtraStoredData):
+    def __init__(self, data: dict[str, Any]) -> None:
+        self.data = data
+        super().__init__()
+
+    def as_dict(self) -> dict[str, Any]:
+        return self.data
+
+
 class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
     def verified_schedule_update_ha_state(self):
         if self.hass is not None:
@@ -64,3 +73,17 @@ class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
     async def restore_attributes(self):
         if (last_extra_attributes := await self.async_get_last_extra_data()) is not None:
             self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {"servent_id": self.servent_id}
+
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData | None:
+        sup = super().extra_restore_state_data
+        sup_data = sup.as_dict() if sup else {}
+
+        data = dict(self._attr_extra_state_attributes).copy()
+
+        for k in self.fixed_attributes:
+            data.pop(k, None)
+
+        data.pop("servent_id", None)
+
+        return ServentExtraData(sup_data | data)
