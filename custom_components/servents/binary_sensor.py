@@ -4,11 +4,16 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.components.threshold.binary_sensor import ThresholdSensor
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .data_carriers import ServentBinarySensorDefinition, ServentThresholdBinarySensorDefinition
+from .data_carriers import (
+    ServentBinarySensorDefinition,
+    ServentDeviceDefinition,
+    ServentThresholdBinarySensorDefinition,
+)
 from .entity import ServEntEntity
 from .registrar import get_registrar
 
@@ -18,13 +23,47 @@ async def async_setup_entry(
     _config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensor platform."""
+    configure_homeassistant_up_sensor(hass, async_add_entities)
+
     get_registrar().register_builder_for_definition(
         ServentBinarySensorDefinition, lambda x: ServEntBinarySensor(x), async_add_entities
     )
     get_registrar().register_builder_for_definition(
         ServentThresholdBinarySensorDefinition, lambda x: ServEntThresholdBinarySensor(x, hass), async_add_entities
     )
+
+
+def configure_homeassistant_up_sensor(
+    hass: HomeAssistant,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    # Create Binary Sensor for HASS IS UP
+    uptime_entity = ServEntHassIsReady()
+    async_add_entities([uptime_entity], True)
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, lambda _x: uptime_entity.set_state(True))
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _x: uptime_entity.set_state(False))
+
+
+class ServEntHassIsReady(BinarySensorEntity):
+    def __init__(self):
+        self._attr_should_poll = False
+        self._attr_has_entity_name = True
+        self._attr_unique_id = "servent-hass-is-up"
+        self._attr_name = "Home Assistant is Ready"
+        self._attr_is_on = False
+        self._attr_extra_state_attributes = {"servent_flag": "servent-hass-is-up"}
+
+        self._attr_device_info = ServentDeviceDefinition(
+            device_id="servent_core_device",
+            name="Servents Core",
+            manufacturer="Servents",
+        ).get_device_info()
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def set_state(self, state: bool):
+        self._attr_is_on = state
+        self.schedule_update_ha_state()
 
 
 class ServEntBinarySensor(ServEntEntity[ServentBinarySensorDefinition], BinarySensorEntity, RestoreEntity):
