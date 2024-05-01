@@ -25,9 +25,10 @@ class ServEntEntityAttributes(Generic[T], Entity):
 
         # sensor fixed values
         # When we create a sensor, we never set an initial value. Value should be set by calling the right service
-        self._update_servent_entity_config(config)
+        self.servent_config = config
         self._attr_unique_id = f"sensor-{self.servent_config.servent_id}"
         self.servent_id = self.servent_config.servent_id
+        self._update_servent_entity_config(config)
         self.set_new_state_and_attributes(
             self.servent_config.default_state,
             self.fixed_attributes,
