@@ -80,7 +80,7 @@ class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
         sup = super().extra_restore_state_data
         sup_data = sup.as_dict() if sup else {}
 
-        data = dict(self._attr_extra_state_attributes).copy()
+        data = dict(self._attr_extra_state_attributes if self._attr_extra_state_attributes else {}).copy()
 
         for k in self.fixed_attributes:
             data.pop(k, None)

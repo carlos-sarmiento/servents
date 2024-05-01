@@ -63,6 +63,7 @@ class ServEntHassIsReady(BinarySensorEntity):
 
     def set_state(self, state: bool):
         self._attr_is_on = state
+        get_registrar().set_hass_up(state)
         self.schedule_update_ha_state()
 
 

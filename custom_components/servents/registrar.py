@@ -16,6 +16,10 @@ class ServentDefinitionRegistrar:
     entity_definitions: dict[str, BaseServentEntityDefinition] = field(default_factory=dict)
     live_entities: dict[str, ServEntEntity] = field(default_factory=dict)
     entity_builders: dict[str, Callable[[BaseServentEntityDefinition], ServEntEntity]] = field(default_factory=dict)
+    is_hass_up: bool = False
+
+    def set_hass_up(self, state: bool):
+        self.is_hass_up = state
 
     def register_definition(self, entity: BaseServentEntityDefinition) -> None:
         if entity.servent_id in self.entity_definitions:
@@ -75,3 +79,4 @@ def get_registrar() -> ServentDefinitionRegistrar:
 def reset_registrar() -> None:
     global servent_current_config
     servent_current_config = ServentDefinitionRegistrar()
+    servent_current_config.is_hass_up = True

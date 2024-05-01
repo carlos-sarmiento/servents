@@ -1,8 +1,16 @@
 import logging
 
+import voluptuous as vol
+from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import (
+    EVENT_HOMEASSISTANT_STARTED,
+    EVENT_HOMEASSISTANT_STOP,
+    HomeAssistant,
+    ServiceCall,
+    callback,
+)
 from homeassistant.helpers import device_registry as dr
 
 from custom_components.servents.registrar import get_registrar, reset_registrar
@@ -22,6 +30,21 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "servent/hass-state",
+    }
+)
+@callback
+def websocket_hass_is_up(
+    _hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Handle search."""
+    connection.send_result(msg["id"], {"is_hass_up": get_registrar().is_hass_up})
 
 
 async def handle_create_entity(call: ServiceCall) -> None:
@@ -108,6 +131,11 @@ def register_and_update_all_entities() -> None:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up this integration using UI."""
+    websocket_api.async_register_command(hass, websocket_hass_is_up)
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, lambda _x: get_registrar().set_hass_up(True))
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _x: get_registrar().set_hass_up(False))
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     hass.bus.async_fire("servent.core_reloaded")
 
