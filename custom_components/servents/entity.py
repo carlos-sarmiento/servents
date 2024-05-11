@@ -2,7 +2,7 @@ import logging
 from typing import Any, Generic, TypeVar
 
 from homeassistant.const import EntityCategory
-from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .data_carriers import BaseServentEntityDefinition
@@ -40,9 +40,6 @@ class ServEntEntityAttributes(Generic[T], Entity):
 
         # Absolutely Required Attributes
         self._attr_name = self.servent_config.name
-        self._attr_device_info = (
-            self.servent_config.device_definition.get_device_info() if self.servent_config.device_definition else None
-        )
         self._attr_entity_category = (
             EntityCategory(self.servent_config.entity_category) if self.servent_config.entity_category else None
         )
@@ -55,6 +52,13 @@ class ServEntEntityAttributes(Generic[T], Entity):
 
     def set_new_state_and_attributes(self, state, attributes) -> None:
         pass
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return the device info."""
+        return (
+            self.servent_config.device_definition.get_device_info() if self.servent_config.device_definition else None
+        )
 
 
 class ServentExtraData(ExtraStoredData):
@@ -80,7 +84,10 @@ class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
         sup = super().extra_restore_state_data
         sup_data = sup.as_dict() if sup else {}
 
-        data = dict(self._attr_extra_state_attributes if self._attr_extra_state_attributes else {}).copy()
+        try:
+            data = dict(self._attr_extra_state_attributes).copy()
+        except AttributeError:
+            data = {}
 
         for k in self.fixed_attributes:
             data.pop(k, None)

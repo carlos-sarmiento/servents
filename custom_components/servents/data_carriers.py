@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
@@ -106,6 +107,7 @@ EntityTypeToDataclassMap: dict[AllowedEntityTypes, type] = {
 }
 
 T = TypeVar("T")
+_LOGGER = logging.getLogger(__name__)
 
 
 def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
@@ -117,8 +119,8 @@ def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
     if entity_type not in EntityTypeToDataclassMap:
         raise Exception(f"entity type: {entity_type} is not supported")
 
-    if "device_definition" in data and data["device_definition"]:
-        data["device_definition"] = clean_params_and_build(ServentDeviceDefinition, data["device_definition"])
+    if "device_config" in data and data["device_config"]:
+        data["device_definition"] = clean_params_and_build(ServentDeviceDefinition, data["device_config"])
 
     builder = EntityTypeToDataclassMap[entity_type]
 
