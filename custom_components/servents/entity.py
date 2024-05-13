@@ -54,7 +54,7 @@ class ServEntEntityAttributes(Generic[T], Entity):
         pass
 
     @property
-    def device_info(self) -> DeviceInfo:
+    def device_info(self) -> DeviceInfo | None:
         """Return the device info."""
         return (
             self.servent_config.device_definition.get_device_info() if self.servent_config.device_definition else None
