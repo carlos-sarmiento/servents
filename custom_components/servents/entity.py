@@ -2,7 +2,8 @@ import logging
 from typing import Any, Generic, TypeVar
 
 from homeassistant.const import EntityCategory
-from homeassistant.helpers.entity import DeviceInfo, Entity
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
 from .data_carriers import BaseServentEntityDefinition
@@ -33,6 +34,7 @@ class ServEntEntityAttributes(Generic[T], Entity):
             self.servent_config.default_state,
             self.fixed_attributes,
         )
+        self._unrecorded_attributes = frozenset(["servent_config", *self.fixed_attributes.keys()])
         self._attr_entity_registry_enabled_default = not self.servent_config.disabled_by_default
 
     def _update_servent_entity_config(self, config: T) -> None:
@@ -40,6 +42,7 @@ class ServEntEntityAttributes(Generic[T], Entity):
 
         # Absolutely Required Attributes
         self._attr_name = self.servent_config.name
+        self._attr_device_info = None
         self._attr_entity_category = (
             EntityCategory(self.servent_config.entity_category) if self.servent_config.entity_category else None
         )
@@ -76,14 +79,12 @@ class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
             self.schedule_update_ha_state()
 
     async def restore_attributes(self) -> None:
-        if (last_extra_attributes := await self.async_get_last_extra_data()) is not None:
-            self._attr_extra_state_attributes = last_extra_attributes.as_dict() | {"servent_id": self.servent_id}
+        attr = await self.async_get_last_extra_data()
+        attr = attr.as_dict() if attr else {}
+        self._attr_extra_state_attributes = self._attr_extra_state_attributes | attr | self.fixed_attributes
 
     @property
     def extra_restore_state_data(self) -> ExtraStoredData | None:
-        sup = super().extra_restore_state_data
-        sup_data = sup.as_dict() if sup else {}
-
         try:
             data = dict(self._attr_extra_state_attributes).copy()
         except AttributeError:
@@ -94,4 +95,4 @@ class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
 
         data.pop("servent_id", None)
 
-        return ServentExtraData(sup_data | data)
+        return ServentExtraData(data)
