@@ -1,7 +1,8 @@
 from datetime import datetime
 
 import pytz
-from homeassistant.components.sensor import RestoreSensor, SensorDeviceClass
+from homeassistant.components.sensor import RestoreSensor
+from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
