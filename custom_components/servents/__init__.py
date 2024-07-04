@@ -3,10 +3,8 @@ import logging
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED, EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import (
-    EVENT_HOMEASSISTANT_STARTED,
-    EVENT_HOMEASSISTANT_STOP,
     HomeAssistant,
     ServiceCall,
     callback,
@@ -32,7 +30,7 @@ PLATFORMS: list[Platform] = [
 ]
 
 
-@websocket_api.websocket_command(
+@websocket_api.websocket_command(  # type: ignore
     {
         vol.Required("type"): "servent/hass-state",
     }
@@ -40,7 +38,7 @@ PLATFORMS: list[Platform] = [
 @callback
 def websocket_hass_is_up(
     _hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
+    connection: websocket_api.connection.ActiveConnection,
     msg: dict,
 ) -> None:
     """Handle search."""
