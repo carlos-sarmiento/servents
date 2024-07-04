@@ -29,7 +29,7 @@ async def async_setup_entry(
         ServentBinarySensorDefinition, lambda x: ServEntBinarySensor(x), async_add_entities
     )
     get_registrar().register_builder_for_definition(
-        ServentThresholdBinarySensorDefinition, lambda x: ServEntThresholdBinarySensor(x, hass), async_add_entities
+        ServentThresholdBinarySensorDefinition, lambda x: ServEntThresholdBinarySensor(x), async_add_entities
     )
 
 
@@ -94,9 +94,8 @@ class ServEntBinarySensor(ServEntEntity[ServentBinarySensorDefinition], BinarySe
 
 
 class ServEntThresholdBinarySensor(ServEntEntity[ServentThresholdBinarySensorDefinition], ThresholdSensor):
-    def __init__(self, config: ServentThresholdBinarySensorDefinition, hass: HomeAssistant):
+    def __init__(self, config: ServentThresholdBinarySensorDefinition):
         super().__init__(
-            hass=hass,
             entity_id=config.entity_id,
             lower=config.lower,
             upper=config.upper,
