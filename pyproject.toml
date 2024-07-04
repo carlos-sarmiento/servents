@@ -12,7 +12,7 @@ readme = "README.md"
 python = ">=3.12,<3.13"
 
 [tool.poetry.group.dev.dependencies]
-homeassistant = "^2024.4.0"
+homeassistant = "^2024.7.0"
 
 [build-system]
 requires = ["poetry-core"]
