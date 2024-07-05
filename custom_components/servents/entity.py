@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
-from .data_carriers import BaseServentEntityDefinition
+from .data_carriers import BaseServentEntityDefinition, ServentDeviceDefinition
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,6 +59,11 @@ class ServEntEntityAttributes(Generic[T], Entity):
     @property
     def device_info(self) -> DeviceInfo | None:
         """Return the device info."""
+        if isinstance(self.servent_config.device_definition, dict):
+            self.servent_config.device_definition = ServentDeviceDefinition.from_dict(
+                self.servent_config.device_definition
+            )
+
         return (
             self.servent_config.device_definition.get_device_info() if self.servent_config.device_definition else None
         )

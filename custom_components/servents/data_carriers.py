@@ -46,6 +46,10 @@ class ServentDeviceDefinition:
     def get_device_id(self) -> str:
         return f"device-{self.device_id}"
 
+    @classmethod
+    def from_dict(cls, data: dict) -> ServentDeviceDefinition:
+        return clean_params_and_build(ServentDeviceDefinition, data)
+
 
 @dataclass
 class ServentSensorDefinition(BaseServentEntityDefinition):
@@ -120,7 +124,7 @@ def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
         raise Exception(f"entity type: {entity_type} is not supported")
 
     if "device_config" in data and data["device_config"]:
-        data["device_definition"] = clean_params_and_build(ServentDeviceDefinition, data["device_config"])
+        data["device_definition"] = ServentDeviceDefinition.from_dict(data["device_config"])
 
     builder = EntityTypeToDataclassMap[entity_type]
 
