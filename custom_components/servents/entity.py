@@ -84,20 +84,6 @@ class ServEntEntity(ServEntEntityAttributes[T], RestoreEntity):
             self.schedule_update_ha_state()
 
     async def restore_attributes(self) -> None:
-        attr = await self.async_get_last_extra_data()
-        attr = attr.as_dict() if attr else {}
-        self._attr_extra_state_attributes = self._attr_extra_state_attributes | attr | self.fixed_attributes
-
-    @property
-    def extra_restore_state_data(self) -> ExtraStoredData | None:
-        try:
-            data = dict(self._attr_extra_state_attributes).copy()
-        except AttributeError:
-            data = {}
-
-        for k in self.fixed_attributes:
-            data.pop(k, None)
-
-        data.pop("servent_id", None)
-
-        return ServentExtraData(data)
+        state = await self.async_get_last_state()
+        attributes = state.attributes if state else {}
+        self._attr_extra_state_attributes = self._attr_extra_state_attributes | self.fixed_attributes | attributes
