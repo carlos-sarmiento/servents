@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .data_carriers import ServentSensorDefinition
+from .data_carriers import SensorConfig
 from .entity import ServEntEntity
 from .registrar import get_registrar
 
@@ -18,13 +18,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar().register_builder_for_definition(
-        ServentSensorDefinition, lambda x: ServEntSensor(x), async_add_entities
-    )
+    get_registrar().register_builder_for_definition(SensorConfig, lambda x: ServEntSensor(x), async_add_entities)
 
 
-class ServEntSensor(ServEntEntity[ServentSensorDefinition], RestoreSensor):
-    def __init__(self, config: ServentSensorDefinition):
+class ServEntSensor(ServEntEntity[SensorConfig], RestoreSensor):
+    def __init__(self, config: SensorConfig):
         self.servent_configure(config)
 
     def update_specific_entity_config(self):
@@ -35,7 +33,7 @@ class ServEntSensor(ServEntEntity[ServentSensorDefinition], RestoreSensor):
 
         self._attr_native_unit_of_measurement = self.servent_config.unit_of_measurement
         self._attr_state_class = self.servent_config.state_class
-        self._attr_options = self.servent_config.options
+        self._attr_options = list(self.servent_config.options) if self.servent_config.options else None
 
     def set_new_state_and_attributes(self, state, attributes):
         if state is not None and self._attr_device_class in [SensorDeviceClass.DATE, SensorDeviceClass.TIMESTAMP]:

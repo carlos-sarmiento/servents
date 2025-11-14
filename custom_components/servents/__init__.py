@@ -10,13 +10,15 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.helpers import device_registry as dr
+from serde import from_dict
 
 from custom_components.servents.registrar import get_registrar, reset_registrar
+from servents.data_model.update_entity import ServentUpdateEntity
 
 from .const import (
     DOMAIN,
 )
-from .data_carriers import ServentUpdateEntityDefinition, clean_params_and_build, to_dataclass
+from .data_carriers import deserialize
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +55,7 @@ async def handle_create_entity(call: ServiceCall) -> None:
     if not entities_list:
         raise Exception("Call does not define any entities")
 
-    entities = [to_dataclass(x) for x in entities_list]
+    entities = [deserialize(x) for x in entities_list]
 
     for definition in entities:
         try:
@@ -67,7 +69,7 @@ async def handle_create_entity(call: ServiceCall) -> None:
 async def handle_update_entity(call: ServiceCall) -> None:
     """Handle the service call."""
 
-    data = clean_params_and_build(ServentUpdateEntityDefinition, call.data)
+    data = from_dict(ServentUpdateEntity, call.data)
 
     live_entity = get_registrar().get_live_entity_for_servent_id(data.servent_id)
 
@@ -76,7 +78,7 @@ async def handle_update_entity(call: ServiceCall) -> None:
         live_entity.verified_schedule_update_ha_state()
 
     else:
-        _LOGGER.warn(
+        _LOGGER.warning(
             f"Tried to update a Non Registered ID {data.servent_id}. This can happen if you are sending an update event immediately after a creation event and the ID hasn't been registered yet"
         )
 
@@ -91,7 +93,7 @@ def setup(hass: HomeAssistant, _entry: ConfigEntry):
 
         live_entity = get_registrar().get_all_entities()
 
-        device_ids = set([x.device_definition.get_device_id() for x in live_entity if x.device_definition])
+        device_ids = set([x.device_definition.device_id for x in live_entity if x.device_definition])
 
         devices = [d for d in device_registry.devices.values() if any(["servent" in a[1] for a in d.identifiers])]
 
