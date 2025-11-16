@@ -6,7 +6,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
 
-from custom_components.servents.data_carriers import get_hass_device_info
+from custom_components.servents.deserialization import get_hass_device_info
 from servents.data_model.entity_configs import EntityConfig
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,6 +20,7 @@ class ServEntEntityAttributes(Generic[T], Entity):
     fixed_attributes: dict[str, Any]
 
     def servent_configure(self, config: T) -> None:
+        _LOGGER.debug("Configuring ServEntEntityAttributes with config: %s", config)
         # entity attributes
         # Fixed Values
         self._attr_should_poll = False
@@ -39,6 +40,7 @@ class ServEntEntityAttributes(Generic[T], Entity):
         self._attr_entity_registry_enabled_default = not self.servent_config.disabled_by_default
 
     def _update_servent_entity_config(self, config: T) -> None:
+        _LOGGER.debug("Updating ServEntEntityAttributes with config: %s", config)
         self.servent_config = config
 
         # Absolutely Required Attributes
@@ -63,7 +65,10 @@ class ServEntEntityAttributes(Generic[T], Entity):
         if self.servent_config.device_definition is None:
             return None
 
-        return get_hass_device_info(self.servent_config.device_definition)
+        device_info = get_hass_device_info(self.servent_config.device_definition)
+
+        _LOGGER.debug("Device Info: %s", device_info)
+        return device_info
 
 
 class ServentExtraData(ExtraStoredData):

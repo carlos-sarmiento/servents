@@ -4,7 +4,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .data_carriers import SelectConfig
+from .deserialization import SelectConfig
 from .entity import ServEntEntity
 from .registrar import get_registrar
 

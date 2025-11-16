@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal, TypeVar
 
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -20,6 +21,8 @@ from servents.data_model.entity_configs import (
 from .const import (
     DOMAIN,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 AllowedEntityTypes = Literal["sensor", "binary_sensor", "threshold", "switch", "number", "button", "select"]
 
@@ -46,7 +49,11 @@ def deserialize(data: dict[str, Any]) -> EntityConfig:
     if entity_type not in EntityTypeToDataclassMap:
         raise Exception(f"entity type: {entity_type} is not supported")
 
-    return from_dict(EntityTypeToDataclassMap[entity_type], data)
+    result = from_dict(EntityTypeToDataclassMap[entity_type], data)
+
+    _LOGGER.debug("Deserialized entity config: %s", result)
+
+    return result
 
 
 def get_hass_device_info(device_config: DeviceConfig) -> DeviceInfo | None:

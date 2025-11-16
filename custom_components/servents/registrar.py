@@ -5,7 +5,7 @@ from typing import Callable, TypeVar
 
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .data_carriers import EntityConfig
+from .deserialization import EntityConfig
 from .entity import ServEntEntity
 
 T = TypeVar("T", bound=EntityConfig)

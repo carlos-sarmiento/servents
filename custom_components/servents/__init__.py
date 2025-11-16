@@ -18,7 +18,7 @@ from servents.data_model.update_entity import ServentUpdateEntity
 from .const import (
     DOMAIN,
 )
-from .data_carriers import deserialize
+from .deserialization import deserialize
 
 _LOGGER = logging.getLogger(__name__)
 

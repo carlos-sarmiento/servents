@@ -1,11 +1,11 @@
 [project]
 name = "servents"
-version = "0.1.0"
+version = "0.5.1"
 description = "ServEnts - Service Defined Entities"
 authors = [{ name = "Carlos G. Sarmiento", email = "carlos@sarmiento.io" }]
 requires-python = ">=3.13.2"
 readme = "README.md"
-dependencies = ["servents-data-model>=0.5.0"]
+dependencies = ["servents-data-model>=0.6.0"]
 
 [dependency-groups]
 dev = ["homeassistant>=2025.11.0"]
