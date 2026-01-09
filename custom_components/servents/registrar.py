@@ -5,23 +5,23 @@ from typing import Callable, TypeVar
 
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .deserialization import EntityConfig
+from .data_carriers import BaseServentEntityDefinition
 from .entity import ServEntEntity
 
-T = TypeVar("T", bound=EntityConfig)
+T = TypeVar("T", bound=BaseServentEntityDefinition)
 
 
 @dataclass
 class ServentDefinitionRegistrar:
-    entity_definitions: dict[str, EntityConfig] = field(default_factory=dict)
+    entity_definitions: dict[str, BaseServentEntityDefinition] = field(default_factory=dict)
     live_entities: dict[str, ServEntEntity] = field(default_factory=dict)
-    entity_builders: dict[str, Callable[[EntityConfig], ServEntEntity]] = field(default_factory=dict)
+    entity_builders: dict[str, Callable[[BaseServentEntityDefinition], ServEntEntity]] = field(default_factory=dict)
     is_hass_up: bool = False
 
     def set_hass_up(self, state: bool):
         self.is_hass_up = state
 
-    def register_definition(self, entity: EntityConfig) -> None:
+    def register_definition(self, entity: BaseServentEntityDefinition) -> None:
         if entity.servent_id in self.entity_definitions:
             new_type = type(entity)
             old_type = type(self.entity_definitions[entity.servent_id])
@@ -36,7 +36,7 @@ class ServentDefinitionRegistrar:
     def get_entities_of_type(self, entity_type: type[T]) -> list[T]:
         return [x for x in self.entity_definitions.values() if isinstance(x, entity_type)]
 
-    def get_all_entities(self) -> list[EntityConfig]:
+    def get_all_entities(self) -> list[BaseServentEntityDefinition]:
         return [x for x in self.entity_definitions.values()]
 
     def get_live_entity_for_servent_id(self, servent_id: str) -> ServEntEntity | None:
@@ -61,7 +61,7 @@ class ServentDefinitionRegistrar:
 
         self.entity_builders[type_name] = full_implementation  # type: ignore
 
-    def build_and_register_entity(self, definition: EntityConfig) -> ServEntEntity:
+    def build_and_register_entity(self, definition: BaseServentEntityDefinition) -> ServEntEntity:
         type_name = str(type(definition))
         if type_name not in self.entity_builders:
             raise Exception(f"There is no builder registered for type {type_name}")

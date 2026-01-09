@@ -4,10 +4,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from servents.data_model.entity_configs import (
-    ButtonConfig,
-)
-
+from .data_carriers import ServentButtonDefinition
 from .entity import ServEntEntity
 from .registrar import get_registrar
 
@@ -18,11 +15,13 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar().register_builder_for_definition(ButtonConfig, lambda x: ServEntButton(x, hass), async_add_entities)
+    get_registrar().register_builder_for_definition(
+        ServentButtonDefinition, lambda x: ServEntButton(x, hass), async_add_entities
+    )
 
 
-class ServEntButton(ServEntEntity[ButtonConfig], ButtonEntity, RestoreEntity):
-    def __init__(self, config: ButtonConfig, hass: HomeAssistant):
+class ServEntButton(ServEntEntity[ServentButtonDefinition], ButtonEntity, RestoreEntity):
+    def __init__(self, config: ServentButtonDefinition, hass: HomeAssistant):
         self.servent_configure(config)
         self._hass = hass
 
