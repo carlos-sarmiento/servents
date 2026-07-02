@@ -1,0 +1,4 @@
+[submodule "servents-data-model"]
+	path = servents-data-model
+	url = git@github.com:carlos-sarmiento/servents-data-model.git
+	branch = master

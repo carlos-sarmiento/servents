@@ -1,0 +1,632 @@
+# ServEnts Code Audit
+
+Audit of `custom_components/servents/` (HA 2025.11 target, ~800 LOC) covering
+bugs, correctness issues, and code structure. Findings were verified against
+the installed Home Assistant 2025.11 source where behavior depends on HA
+internals. The characterization test suite (115 tests) passes and already pins
+several of the quirks below; those are cross-referenced.
+
+Scope note: `servents-data-model` (included as a git submodule for
+development reference, installed at runtime as the published
+`servents_data_model` 0.6.0 package) is the intended replacement for
+`data_carriers.py` and is already used by the primary client, Domovoy
+(`~/dev/domovoy/domovoy/plugins/servents/`). This audit treats that package
+and the Domovoy wire format as the contract the integration must satisfy —
+see H8, the "servents-data-model adoption" section, and above all the
+"Hard constraint" section immediately below: all fixes must land without
+touching Domovoy. Behavior claims about pyserde were verified experimentally
+against Domovoy's venv (pyserde 0.31.4).
+
+Severity legend:
+
+| Severity | Meaning                                                           |
+| -------- | ----------------------------------------------------------------- |
+| High     | Broken or destructive behavior a user can hit in normal operation |
+| Medium   | Wrong or surprising behavior, silent failure, or API misuse       |
+| Low      | Hygiene, dead code, naming, docs                                  |
+
+---
+
+## Hard constraint: fixes must not break Domovoy (no Domovoy changes)
+
+Every fix in this audit must land **without any corresponding change in
+Domovoy**. Domovoy is the production client and stays as-is; the integration
+must keep satisfying the contract Domovoy relies on today. Concretely
+(verified against `~/dev/domovoy/domovoy/plugins/`):
+
+1. **The `servent_id` extra attribute must be published on every entity,
+   including buttons.** Domovoy's entire entity discovery is
+   `get_entity_id_by_attribute("servent_id", ...)` — both the
+   `wait_for_creation` startup loop and `ServEntEntity.get_entity_id()`
+   depend on it. The H3/H4/L7 attribute-persistence rework must preserve it
+   in the live state's attributes at all times.
+2. **`create_entity` must keep succeeding for every call Domovoy makes
+   today.** Domovoy's `_create_entity` has no try/except around the service
+   call, and a raised HA error surfaces as an unhandled
+   `HassApiCommandError` in the app. In particular, the H7 fix must keep the
+   servent_id type-conflict path **non-fatal** (warning-level log, call
+   succeeds) — an app re-registering an id with a new entity type must not
+   start crashing Domovoy apps. Proper error types
+   (`ServiceValidationError`) are fine for payloads Domovoy can never send
+   (malformed dicts, unknown entity_type); they are not fine for anything a
+   running Domovoy app can trigger.
+3. **`update_state` on a button must remain accepted.** Domovoy exposes
+   `set_to` on `ServEntButton` via the base class. The M2 fix must not turn
+   this into a service error — make it a no-op with a warning log, or apply
+   the attributes; do not reject.
+4. **The `servent/hass-state` websocket command must keep its name and
+   `{"is_hass_up": bool}` response shape.** Domovoy polls it every 0.5s for
+   up to 5 minutes at startup (`plugins/hass/core.py:227-238`) and treats
+   its absence as "ServEnts not installed".
+5. **The `servent.{event}` event prefix for button presses** must stay —
+   Domovoy registers listeners on `f"servent.{event}"` verbatim, including
+   the `servent_extended_button_press` indirection for long event names.
+6. **`device_definition` (the shared-model key) must be accepted** as the
+   nested device payload — it is what Domovoy actually sends (H8). Do not
+   "fix" H8 by standardizing on `device_config` and requiring Domovoy to
+   rename.
+7. **Wire IDs are frozen:** unique_id `sensor-{servent_id}` (M3) and device
+   identifier `device-{device_id}` — existing registry entries and any
+   automations on them must survive.
+8. **Unknown/extra keys in payloads must stay ignored, not rejected.**
+   Domovoy sends `app_name` and `is_global`, which the integration currently
+   drops. Whether or not it starts using them, it must keep accepting them.
+
+The `servents-data-model` strictness deltas (see the adoption section) are
+compatible with this constraint: Domovoy constructs the config dataclasses
+client-side, so pyserde's required fields and `__post_init__` validators
+already run in Domovoy before anything reaches the wire — Domovoy can only
+send payloads the strict model accepts. The callers that the stricter
+parsing can break are non-Domovoy ones (manual service calls, other
+scripts), which is an acceptable, deliberate change.
+
+These contract points are enforced by
+`tests/test_domovoy_wire_format.py`, which replays verbatim Domovoy
+payloads (generated by running Domovoy's own serialization path against
+servents-data-model 0.6.0) through the service handlers. It also pins the
+H8 crash so the fix flips a test rather than relying on prose. Final
+acceptance test for the whole refactor: a running Domovoy instance
+(`~/dev/domovoy`) pointed at the fixed integration must start all apps,
+create/rediscover all entities, press buttons, and update states without a
+single Domovoy-side edit.
+
+---
+
+## High severity
+
+### H1. `async_unload_entry` always crashes — `hass.data[DOMAIN]` is never set
+
+`__init__.py:146` pops from `hass.data[DOMAIN]`, but nothing in the codebase
+ever assigns `hass.data[DOMAIN]` (verified by grep: the only reference to
+`hass.data` in the integration is this line). Unloading or reloading the
+config entry raises `KeyError: 'servents'` after the platforms unload,
+so HA reports the unload as failed every time.
+
+Fix: delete the line, or store per-entry data during `async_setup_entry` if
+there is ever anything to store.
+
+### H2. `cleanup_devices` can delete devices belonging to *other* integrations
+
+`__init__.py:96` selects removal candidates with:
+
+```python
+devices = [d for d in device_registry.devices.values()
+           if any(["servent" in a[1] for a in d.identifiers])]
+```
+
+`a[0]` is the domain, `a[1]` is the identifier value. The check inspects the
+**value** for the substring `"servent"` instead of comparing the domain to
+`DOMAIN`. Two consequences (both pinned as "quirks" in
+`tests/test_services.py:209-235`):
+
+- A device from a foreign integration whose identifier value happens to
+  contain `"servent"` (e.g. `("zwave", "my-servent-node")`) is **deleted**.
+  This is a destructive service; that is a real data-loss path.
+- A stale ServEnts device whose `device_id` doesn't contain `"servent"`
+  (e.g. `device-abc`) is **never** cleaned up, which defeats the purpose of
+  the service.
+
+Fix: filter on `a[0] == DOMAIN`.
+
+### H3. `_unrecorded_attributes` assignment silently does nothing
+
+`entity.py:37` sets `self._unrecorded_attributes = frozenset([...])` on the
+**instance**. HA computes the effective set at class-definition time in
+`Entity.__init_subclass__` (`homeassistant/helpers/entity.py:554-558`), which
+combines the *class* attribute into `__combined_unrecorded_attributes`. An
+instance-level assignment is never read — verified experimentally against the
+installed HA: the combined set stays empty. The intent (keep `servent_id` and
+fixed attributes out of the recorder) is entirely unrealized, and per-config
+keys can't be expressed this way at all (the set must be static per class,
+or use `MATCH_ALL`).
+
+### H4. `restore_attributes` pollutes entities with the full historical attribute set
+
+`entity.py:86-89`:
+
+```python
+state = await self.async_get_last_state()
+attributes = state.attributes if state else {}
+self._attr_extra_state_attributes = self._attr_extra_state_attributes | self.fixed_attributes | attributes
+```
+
+`state.attributes` is the *complete* attribute dict of the last state —
+including HA-generated attributes such as `friendly_name`, `icon`,
+`device_class`, and `unit_of_measurement`. All of them get merged into
+`extra_state_attributes` and re-published as extra attributes from then on
+(e.g. a sensor ends up with a literal `friendly_name` extra attribute).
+Additionally, the restored (stale) values win over current
+`fixed_attributes` because they're merged last, so an updated fixed
+attribute is silently reverted to its pre-restart value on every restart.
+
+Fix: restore only the keys the integration itself wrote (or persist them via
+`extra_restore_state_data` — see L7, the machinery for this exists but is
+unused), and merge current `fixed_attributes` last.
+
+### H5. Dependency declarations are inverted: `pytz` used but not declared, `servents-data-model` declared but never imported
+
+- `sensor.py:3` imports `pytz`, but `manifest.json` has no `requirements`
+  key. `pytz` is **not** a Home Assistant core dependency (it's only present
+  in the dev venv transitively via `astral`), so on a user install this can
+  raise `ImportError` and take the whole integration down. The idiomatic fix
+  removes the dependency entirely: `homeassistant.util.dt.utc_from_timestamp`
+  or `datetime.timezone.utc`.
+- `pyproject.toml:8` declares `servents-data-model>=0.6.0` as the sole
+  runtime dependency, but nothing in the codebase imports it yet. It is the
+  intended replacement for `data_carriers.py` (see the adoption section
+  below). Note that `pyproject.toml` is irrelevant to a deployed HACS/manual
+  install — HA installs a custom integration's Python dependencies from
+  `manifest.json` `requirements` via pip. When the migration lands,
+  `manifest.json` needs `"requirements": ["servents-data-model==0.6.0"]`
+  (which pulls in pyserde and its dependency tree: beartype, plum-dispatch,
+  jinja2, casefy). The git submodule alone does not make the package
+  importable at runtime.
+
+### H6. Threshold sensor reconfiguration is silently ignored
+
+When `create_entity` is called for an existing `servent_id`,
+`register_and_update_all_entities` (`__init__.py:126`) reuses the live entity
+and calls `_update_servent_entity_config`. For
+`ServEntThresholdBinarySensor`, that only refreshes `device_class`
+(`binary_sensor.py:111-115`). The parameters that define the entity —
+`entity_id`, `lower`, `upper`, `hysteresis` — were consumed once by the
+`ThresholdSensor.__init__` call and are never updated. A user who re-creates
+a threshold sensor with new bounds gets the old bounds with no warning.
+
+### H7. Partial-failure semantics of `create_entity` are inconsistent and lossy
+
+`handle_create_entity` (`__init__.py:48-64`) has three different failure
+behaviors in one function:
+
+1. A malformed definition anywhere in the list aborts the whole call before
+   anything registers (fine, pinned in `test_services.py:68`).
+2. A `register_definition` conflict (type change) is caught and only logged
+   via `_LOGGER.error(e)` — the service call *succeeds* from the caller's
+   perspective, losing the traceback and giving the caller no signal.
+3. A builder failure inside `register_and_update_all_entities` (e.g. the
+   platform hasn't finished setting up, so no builder is registered)
+   propagates *after* definitions were already registered, leaving partially
+   applied state.
+
+Additionally the handler raises bare `Exception` instead of
+`ServiceValidationError` / `HomeAssistantError`, so HA can't present the
+errors properly in the UI.
+
+Domovoy constraint (item 2 above): path 2 — the type-conflict swallow — is
+load-bearing. Domovoy does not guard its `create_entity` calls, so this path
+must stay non-fatal; improve it to a structured warning, don't promote it to
+an error. Raising proper error types is only safe on paths Domovoy cannot
+trigger (missing/empty `entities`, malformed definitions).
+
+### H8. The production wire format bypasses device coercion; `cleanup_devices` crashes on it
+
+There are two names for the device payload, and the integration only handles
+one of them eagerly:
+
+- `services.yaml` and `to_dataclass` (`data_carriers.py:126-127`) expect
+  `device_config`, which is coerced to `ServentDeviceDefinition` up front.
+- **Domovoy — the primary client — sends `device_definition`**
+  (`~/dev/domovoy/domovoy/plugins/servents/__init__.py:142`). Because that
+  key matches the dataclass field name, `clean_params_and_build` passes the
+  **raw dict** straight into the definition. No coercion happens.
+
+The dict survives until something reads the `device_info` *property*, whose
+side-effecting getter (`entity.py:62-65`, see L6) lazily converts it. HA
+reads `device_info` once, when the entity is first added. But on a
+*re-create* of an existing `servent_id` (the standard Domovoy app-restart
+flow), `_update_servent_entity_config` swaps in the new definition carrying
+a raw dict, and nothing reads `device_info` again. A subsequent
+`cleanup_devices` call then hits
+`x.device_definition.get_device_id()` (`__init__.py:94`) on a dict and
+raises `AttributeError` — reproduced against the current code:
+
+```python
+d = to_dataclass({"entity_type": "sensor", "servent_id": "s1", "name": "S",
+                  "device_definition": {"device_id": "d1", "name": "Dev"}})
+type(d.device_definition)         # dict — not ServentDeviceDefinition
+d.device_definition.get_device_id()  # AttributeError
+```
+
+This is precisely the sequence `cleanup_devices` exists for (restart
+producer, re-create entities, clean stale devices), so the service is broken
+for its main use case with the production client. Fix: coerce
+`device_definition` dicts in `to_dataclass` (alongside `device_config`), or
+land the `servents-data-model` migration, where `serde.from_dict`
+deserializes the nested `DeviceConfig` natively (verified — see the adoption
+section).
+
+---
+
+## Medium severity
+
+### M1. Falsy checks drop legitimate `0` values for numbers
+
+`number.py:43-50` uses `if self.servent_config.max_value:` (etc.), so
+`min_value=0.0`, `max_value=0.0`, or `step=0.0` are ignored and HA defaults
+apply instead. `min_value=0` is an extremely common configuration
+(pinned as a quirk in `test_platform_entities.py:140-146`). Should be
+`is not None`.
+
+### M2. `update_state` on a button silently does nothing
+
+`ServEntButton` never overrides `set_new_state_and_attributes`, so the base
+no-op (`entity.py:56-57`) runs. Calling `update_state` for a button's
+`servent_id` reports success, logs nothing, changes nothing. Per Domovoy
+constraint 3, rejecting the call is off the table (Domovoy exposes `set_to`
+on buttons through the base class): fix by applying the attributes, or keep
+the no-op but log a warning so the caller has a signal.
+
+### M3. Every entity's unique_id is prefixed `sensor-`, regardless of platform
+
+`entity.py:30` hardcodes `f"sensor-{servent_id}"` for switches, numbers,
+buttons, selects, and binary sensors alike (pinned in
+`test_entity_base.py:25-29`). It works only because unique_ids are scoped
+per platform, but it makes registry entries confusing and can't be changed
+later without orphaning every existing entity (unique_id changes create new
+registry entries). Worth noting explicitly as a constraint for the refactor:
+**this prefix must be preserved** to avoid breaking existing installs.
+
+### M4. `date` device class produces a datetime, not a date
+
+`sensor.py:41-42` converts epoch input to a `datetime` for both `TIMESTAMP`
+and `DATE` classes. For `SensorDeviceClass.DATE`, HA serializes with
+`value.isoformat()` expecting a `date`; a `datetime` yields
+`"2023-11-14T22:13:20+00:00"` as the state of a date sensor. Use
+`.date()` for the DATE branch. Also, `int(state)` rejects float-string
+epochs (`"1700000000.5"` → `ValueError`) and truncates sub-second precision.
+
+### M5. Builder dispatch by `str(type(...))` with exact-match only
+
+`registrar.py:54,65` keys builders by the string `"<class '...'>"`. Beyond
+being an odd choice (the `type` object itself is hashable), dispatch is
+exact-type only while `register_definition` allows *subclass* replacement
+(`isinstance` check at `registrar.py:29`). Net effect: the registrar can
+accept a definition it is then unable to build
+(pinned in `test_registrar.py:41-49` and `103-112`). The two checks should
+agree; keying by the type object with exact-type registration is simplest.
+
+### M6. `reset_registrar` claims HA is up on a fresh registrar
+
+`registrar.py:79-82` hard-sets `is_hass_up = True` on the replacement
+instance — a bare `ServentDefinitionRegistrar()` defaults to `False`. After
+a config-entry unload (the one place `reset_registrar` is called), the
+websocket `servent/hass-state` endpoint reports HA as "up" regardless of
+actual state. This looks like a workaround for something rather than a
+decision; at minimum it deserves a comment, more likely it should carry the
+previous value.
+
+### M7. Two parallel mechanisms track "HASS is up"
+
+- `__init__.py:134-135` registers `EVENT_HOMEASSISTANT_STARTED/STOP`
+  listeners that call `get_registrar().set_hass_up(...)`.
+- `binary_sensor.py:44-45` registers a *second* pair of listeners on the same
+  events, whose handler (`set_state`, line 66) **also** calls
+  `get_registrar().set_hass_up(...)`.
+
+Redundant, order-dependent, and re-registered on every config-entry reload
+(`async_listen_once` listeners from previous setups are never cleaned up —
+none of the listener/service registrations hold unsubscribe handles).
+
+### M8. No input validation on any service
+
+`hass.services.register` is called without schemas (`__init__.py:105-107`),
+and `services.yaml` fields carry no selectors. Everything is validated ad hoc
+downstream, where errors surface as bare `Exception` / `TypeError`
+(`clean_params_and_build` raising `TypeError` for a missing required field,
+`test_data_carriers.py:190`). A `vol.Schema` at registration time would give
+callers actionable errors and remove the hand-rolled checks. Relatedly,
+`clean_params_and_build` (`data_carriers.py:141-144`) silently drops unknown
+keys, so a typo like `min` instead of `min_value` is invisible to the caller.
+
+The `servents-data-model` migration solves the field-level half of this:
+`serde.from_dict` raises on missing required fields and on invalid
+literal/enum values at parse time (verified against pyserde 0.31.4). Unknown
+keys are still silently ignored — same lenience as today — and a top-level
+`vol.Schema` (entities is a non-empty list of dicts; update_state has
+servent_id/state) is still worth adding for UI-friendly errors.
+
+### M9. `to_dataclass` mutates the caller's service-call data
+
+`handle_create_entity` copies only the top level (`call.data.copy()`,
+`__init__.py:50`); `to_dataclass` then writes into the *inner* per-entity
+dicts (`data["device_definition"] = ...`, `data_carriers.py:127`). The inner
+dicts belong to the (nominally read-only) `ServiceCall.data`. It works
+because `ReadOnlyDict` doesn't freeze nested dicts, but mutating a caller's
+service payload is a side effect waiting to become a bug.
+
+### M10. Legacy / deprecated API usage
+
+| Location             | Issue                                                                                                         |
+| -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                    |
+| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`    |
+| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict                     |
+| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)` |
+| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL              |
+
+### M11. Duplicate "HASS is up" entity on config-entry reload
+
+`configure_homeassistant_up_sensor` (`binary_sensor.py:36-45`) runs on every
+platform setup and calls `async_add_entities` with a fixed unique_id. On a
+reload, HA rejects the duplicate unique_id with an error log, and the fresh
+`ServEntHassIsReady` instance that the new listeners point at is not the one
+in the state machine.
+
+---
+
+## Low severity / hygiene
+
+- **L1. Copy-paste artifacts.** `services.yaml:1` says "available Irrigation
+  Unlimited services"; `websocket_hass_is_up`'s docstring is "Handle
+  search." (`__init__.py:44`).
+- **L2. Version mismatch.** `manifest.json` says `0.1.0`; `pyproject.toml`
+  says `0.6.0`.
+- **L3. Dead code.** `ServentExtraData` (`entity.py:72-78`) is never used
+  outside its own test; `_LOGGER` in `data_carriers.py:114` is never used;
+  `self._attr_device_info = None` (`entity.py:45`) is dead because the
+  `device_info` property is overridden; `ServEntSelect.options` and the
+  `name` properties on `ServEntButton`/`ServEntThresholdBinarySensor`
+  re-implement what the `_attr_*` defaults already do.
+- **L4. Import-style inconsistency.** `__init__.py:14` and `number.py:7-8`
+  import via the absolute `custom_components.servents.` path while every
+  other module uses relative imports. Pick one (relative).
+- **L5. Naming.** `get_all_entities()` / `entities` variables hold
+  *definitions*, not entities; `live_entity = ...get_all_entities()`
+  (`__init__.py:92`) is definitions too. The definition/live-entity
+  distinction is the core of the design and the names actively fight it.
+  Also `servent_current_config` names the registrar.
+- **L6. `device_info` property mutates state.** `entity.py:62-65` coerces a
+  raw dict `device_definition` into a dataclass *inside a property getter*.
+  Dicts don't just "legitimately end up there" — they always do with
+  Domovoy's payload (see H8, where this lazy coercion is the crash path).
+  Coerce in `to_dataclass` instead; a getter with write side effects is a
+  trap.
+- **L7. Restore machinery half-adopted.** `ServentExtraData` +
+  `extra_restore_state_data` would be the correct way to persist only
+  ServEnts-owned attributes (fixing H4), and `ServEntButton.restore_attributes`
+  already reads `async_get_last_extra_data` (`button.py:45`) — but nothing
+  ever *writes* extra data, so that branch can only restore other
+  integrations' leftovers.
+- **L8. Fixed attributes silently ignored for threshold sensors.**
+  `ServEntThresholdBinarySensor.extra_state_attributes`
+  (`binary_sensor.py:122-128`) merges threshold internals and `servent_id`
+  but not `fixed_attributes`, unlike every other platform.
+- **L9. Services are never unregistered** on unload, and the websocket
+  command / event listeners from `async_setup_entry` are re-registered on
+  each reload (related to M7/M11).
+- **L10. `hass.bus.async_fire("servent.core_reloaded")`** fires on *every*
+  setup, including first install — the name overpromises.
+- **L11. `inspect.signature` on every build** (`data_carriers.py:143`) —
+  trivial to cache per class; only matters if entity creation is chatty.
+
+---
+
+## Code structure
+
+The code works, but its shape reflects accretion rather than design. The main
+structural observations, roughly in the order a refactor should care about
+them:
+
+### S1. A module-level mutable singleton is the backbone
+
+`registrar.py:72` holds all state in a process-global
+`ServentDefinitionRegistrar`, accessed via `get_registrar()` from everywhere
+(including lambdas in event listeners). This is why tests need an autouse
+reset fixture, why reload semantics are fragile (H1/M6/M7/M11), and why the
+integration could never support two config entries. HA's idiom is to hang
+runtime state off the config entry (`entry.runtime_data`). Moving the
+registrar there removes the global, the `reset_registrar` hack, and the
+listener-leak class of bugs in one move.
+
+### S2. Responsibilities are smeared across `__init__.py`
+
+`__init__.py` contains service handlers, a websocket command, device-registry
+cleanup logic, and the create-or-update reconciliation loop
+(`register_and_update_all_entities`). One handler
+(`handle_cleanup_devices`) is a closure inside `setup` while its two
+siblings are module-level — for no reason other than needing `hass`, which
+`ServiceCall.hass` already provides. A `services.py` module (per HA
+convention) with all three handlers, plus schemas (M8), would make the entry
+point readable.
+
+### S3. The entity base class is split and sequenced confusingly
+
+`ServEntEntityAttributes` vs `ServEntEntity` (`entity.py:16,81`) is a split
+with no consumer of the intermediate class. `servent_configure` is an
+init-in-all-but-name that subclasses must remember to call from `__init__`
+(none call `super().__init__()`), and it interleaves one-time setup with
+`_update_servent_entity_config`, which is *also* called later for
+reconfiguration, which in turn calls the `update_specific_entity_config`
+hook. Three overlapping lifecycle methods where two (`__init__` +
+`apply_config`) would do.
+
+### S4. Five nearly identical platform modules
+
+`set_new_state_and_attributes` is copy-pasted five times with only the
+target `_attr_*` changing (`sensor.py:40`, `switch.py:41`, `number.py:52`,
+`select.py:41`, `binary_sensor.py:80`), and the
+`fixed_attributes | attributes | {"servent_id": ...}` merge is duplicated in
+each. Same for the `async_setup_entry` builder-registration boilerplate and
+the `async_added_to_hass` restore pattern. The base class should own the
+attribute merge and the restore flow, with a single small hook for "write
+the native state attr".
+
+### S5. The registrar conflates three registries
+
+Definitions, live entities, and builders live in one dataclass with
+string-keyed dispatch (M5). `register_builder_for_definition` also smuggles
+in `async_add_entities` by closure, so "build" implicitly means
+"build + register + add to HA" — which is why a builder failure mid-service
+call leaves partial state (H7). Separating "definition store" from "entity
+factory" would make the create/update flow testable without `MagicMock`
+builders.
+
+### S6. Data carriers duplicate `servents-data-model`, which should replace them
+
+The dataclass-per-type mapping in `data_carriers.py` is clean, but it is now
+a hand-maintained shadow of `servents-data-model`, which Domovoy already
+produces on the wire. Keeping both means every schema change must be made
+twice and the two can silently diverge (they already have — see the field
+inventory in the adoption section). The weaknesses of the local copy —
+silent key-dropping (M8), stringly-typed fields (`device_class`,
+`entity_category`, `state_class`) validated only by enum conversion deep
+inside entity configuration where a bad value raises mid-build (H7 path) —
+are exactly the things `serde.from_dict` fixes at parse time. The remaining
+design decision is dispatch: `to_dataclass` switches on the `entity_type`
+string, which maps 1:1 onto `EntityType` in the shared package.
+
+### What's in good shape
+
+- The characterization test suite is genuinely good: it pins quirks
+  explicitly (with comments distinguishing quirk from intent), covers every
+  module, and runs in 0.14s. It is the right foundation for the refactor.
+- `ruff check` is clean under the configured rule set.
+- The entity-definition → platform mapping and the overall service-driven
+  design are sound; the problems above are almost all in the plumbing, not
+  the concept.
+
+---
+
+## servents-data-model adoption
+
+The submodule (`servents-data-model/`, package `servents.data_model`,
+pyserde-based, kw_only dataclasses) is the source of truth Domovoy already
+serializes with `serde.to_dict` + `strip_none_and_enums_from_containers`
+(which drops all `None`-valued keys before the service call). Replacing
+`data_carriers.py` with `serde.from_dict` on these classes is the right
+move: it kills the duplicate schema (S6), fixes nested-device coercion (H8),
+and moves field validation to parse time (M8, H7 path 1). Verified against
+pyserde 0.31.4 in Domovoy's venv:
+
+- `from_dict` deserializes nested `device_definition` dicts into
+  `DeviceConfig` natively — no lazy-getter coercion needed.
+- Missing required fields and invalid `Literal` values raise `SerdeError`
+  with a precise message at parse time.
+- `__post_init__` validators run through `from_dict` (options→enum coupling
+  for sensors, threshold lower/upper requirement, binary-sensor category
+  restriction).
+- Unknown keys are silently ignored — same lenience as
+  `clean_params_and_build` today, so extra wire keys are not a migration
+  hazard.
+
+### Behavioral deltas to decide consciously
+
+The shared model is *stricter* than `data_carriers.py`. Migrating changes
+what the services accept — each of these currently "works" (loosely) and
+would start raising:
+
+| Field                             | `data_carriers.py` today      | `servents-data-model`                       |
+| --------------------------------- | ----------------------------- | ------------------------------------------- |
+| `NumberConfig.mode`               | Optional, `None` → HA default | **Required**                                |
+| `SelectConfig.options`            | Defaults to `[]`              | **Required**                                |
+| `ButtonConfig.event`              | Defaults to `""`              | **Required**                                |
+| `Threshold.entity_id`             | Defaults to `""`              | **Required**                                |
+| `Threshold.lower`/`upper`         | Both may be absent            | **At least one required** (`__post_init__`) |
+| `Sensor.options` + `device_class` | Independent, unchecked        | `options` forces/requires `enum` class      |
+| `BinarySensor.entity_category`    | Any string, checked at build  | `"config"` **rejected**                     |
+| `device_class` etc.               | Any string, raises mid-build  | Validated `Literal` at parse time           |
+| Positional construction           | Allowed                       | `kw_only=True` — keyword-only               |
+
+All of these are improvements (today's defaults produce broken entities: a
+button with event `""` fires the literal event `servent.`, a threshold
+sensor with no bounds and entity_id `""` is meaningless), but they are
+breaking for any non-Domovoy caller relying on the lenient behavior, and the
+characterization tests that pin the lenient defaults
+(`test_data_carriers.py:146-193`) will need to flip from "quirk pinned" to
+"now rejected".
+
+### Fields the integration currently drops on the floor
+
+The shared model carries `app_name` (on both `EntityConfig` and
+`DeviceConfig`) and `DeviceConfig.is_global`. Domovoy sends them; today
+`clean_params_and_build` silently discards them since the local dataclasses
+lack the fields. **DECIDED: keep ignoring them for now** — the integration
+accepts and discards both, and must never reject a payload for carrying
+them (constraint 8). Pinned by
+`tests/test_domovoy_wire_format.py::test_app_name_and_is_global_are_silently_ignored`.
+
+### Migration mechanics and risks
+
+1. **Packaging — DECIDED: install the published package, do not vendor.**
+   The submodule is for development reference only; at runtime HA installs
+   integration dependencies from `manifest.json` `requirements` (currently
+   absent — H5). Add `"requirements": ["servents-data-model==0.6.0"]`,
+   which brings in pyserde and its tree (beartype, plum-dispatch, jinja2,
+   casefy, typing-inspect). The payoff justifies the footprint: the
+   integration gets `serde.from_dict` itself — shared parse code, nested
+   `DeviceConfig` deserialization (fixes H8 structurally), and parse-time
+   field validation — not just shared field definitions. Add both
+   `servents-data-model` and its underlying HA pin to the release checklist
+   (see item 3 on version coupling).
+2. **Dispatch stays.** `from_dict` needs the concrete class, so the
+   `entity_type` → class map survives; key it on the shared `EntityType`
+   StrEnum instead of raw strings.
+3. **Version coupling.** `derived_consts.py` is generated from the HA
+   version in the package's dev-dependencies (currently 2025.11). If HA adds
+   a device class, the package must be regenerated and re-released before
+   clients can use it; if HA removes one, the package accepts a value HA
+   rejects. Pin `hacs.json`/`manifest.json` HA versions and the package
+   version together, and note the regeneration step
+   (`scripts/enum_to_literal.py`) in the release process.
+4. **Error mapping.** Wrap `SerdeError`/`ValueError` from `from_dict` in
+   `ServiceValidationError` so the strictness lands as friendly UI errors
+   rather than tracebacks (ties into H7). This is safe under the Domovoy
+   constraint: Domovoy builds these dataclasses client-side, so any payload
+   it sends already parses — only hand-written service calls can hit these
+   errors.
+5. **`update_state` too.** `ServentUpdateEntity` in the package mirrors
+   `ServentUpdateEntityDefinition` — migrate that call path in the same
+   sweep so `clean_params_and_build` can be deleted outright.
+
+---
+
+## Suggested priority order for the refactor
+
+| Order | Item                                                                      | Fixes                |
+| ----- | ------------------------------------------------------------------------- | -------------------- |
+| 1     | Fix destructive/crashing bugs in place, before restructuring              | H1, H2, H8, M1       |
+| 2     | Fix runtime dependencies: `manifest.json` requirements, drop `pytz`       | H5                   |
+| 3     | Replace `data_carriers.py` with `servents-data-model` (`serde.from_dict`) | S6, H8, M8 (partial) |
+| 4     | Move registrar state onto the config entry; kill the singleton            | S1, M6, M7, M11      |
+| 5     | Split services out of `__init__.py`; add schemas + proper error types     | S2, M8, H7           |
+| 6     | Collapse the entity base-class lifecycle; de-duplicate platforms          | S3, S4, M2           |
+| 7     | Redo attribute persistence via `extra_restore_state_data`                 | H3, H4, L7           |
+| 8     | Sweep the low-severity hygiene list                                       | L1–L11               |
+
+Step 1's H8 fix (coerce `device_definition` dicts in `to_dataclass`) is a
+two-line stopgap that step 3 later deletes — worth doing anyway, since it
+un-breaks `cleanup_devices` for Domovoy immediately. Step 3 should land with
+the behavioral-delta table reviewed line by line against the
+characterization tests, flipping each pinned quirk to the strict behavior
+deliberately.
+
+Every step is bound by the "no Domovoy changes" constraint section at the
+top — in particular steps 5 (H7 error handling), 6 (M2 button behavior), and
+7 (`servent_id` attribute preservation), which are the three places where
+the *obvious* fix would break Domovoy and the constrained fix differs from
+it. Also: existing installs have unique_ids of the form
+`sensor-{servent_id}` (M3) and device identifiers of the form
+`device-{device_id}` — both must survive the refactor unchanged. The
+`device-` prefix constraint also binds `servents-data-model` adoption:
+`DeviceConfig` in the shared package has no `get_device_id()`; the prefixing
+logic must live on (or wrap) the integration side.
