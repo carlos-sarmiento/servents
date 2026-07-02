@@ -38,10 +38,6 @@ class ServEntButton(ServEntEntity[ButtonConfig], ButtonEntity, RestoreEntity):
     # A button has no native value, so _write_native_state stays the base no-op.
     # update_state on a button therefore applies the merged attributes (incl.
     # servent_id) via the base set_new_state_and_attributes and never raises
-    # (M2 / constraint 3).
-
-    async def restore_attributes(self):
-        if (last_extra_attributes := await self.async_get_last_extra_data()) is not None:
-            self._attr_extra_state_attributes = (
-                last_extra_attributes.as_dict() | self.fixed_attributes | {"servent_id": self.servent_id}
-            )
+    # (M2 / constraint 3). Attribute restore is the base flow: the base
+    # extra_restore_state_data persists the owned attributes and the base
+    # restore_attributes reads them back (L7).

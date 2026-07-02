@@ -4,10 +4,10 @@ ServEntSensor is used as the concrete vehicle since the base classes rely on
 subclass hooks (update_specific_entity_config / set_new_state_and_attributes).
 """
 
-from homeassistant.const import EntityCategory
+from homeassistant.const import MATCH_ALL, EntityCategory
 from servents.data_model.entity_configs import DeviceConfig
 
-from custom_components.servents.entity import ServentExtraData
+from custom_components.servents.entity import SERVENT_ATTRIBUTES_STORE_KEY, ServentExtraData
 from custom_components.servents.sensor import ServEntSensor
 from tests.conftest import make_definition
 
@@ -50,9 +50,20 @@ class TestServentConfigure:
         assert sensor.fixed_attributes == {"zone": "kitchen", "servent_id": "s1"}
         assert sensor._attr_extra_state_attributes == {"zone": "kitchen", "servent_id": "s1"}
 
-    def test_unrecorded_attributes_contains_config_and_fixed_keys(self):
+    def test_unrecorded_attributes_is_class_level_match_all(self):
+        # H3 (WP7): the old instance-level assignment in __init__ was provably
+        # ignored (Entity.__init_subclass__ folds the CLASS attribute into
+        # __combined_unrecorded_attributes at class-creation time). Per-config
+        # fixed-attribute keys are dynamic and cannot appear in a static set,
+        # so the policy is class-level MATCH_ALL: no extra_state_attributes are
+        # recorded (restart survival comes from extra_restore_state_data, not
+        # the recorder).
+        assert ServEntSensor._unrecorded_attributes == frozenset({MATCH_ALL})
+        # And it must land in the combined set HA actually reads — the exact
+        # thing the instance-level assignment failed to do.
+        assert MATCH_ALL in ServEntSensor._Entity__combined_unrecorded_attributes
         sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
-        assert sensor._unrecorded_attributes == frozenset(["servent_config", "zone", "servent_id"])
+        assert sensor._unrecorded_attributes == frozenset({MATCH_ALL})
 
     def test_enabled_by_default(self):
         assert make_sensor()._attr_entity_registry_enabled_default is True
@@ -123,3 +134,76 @@ class TestServentExtraData:
     def test_as_dict_round_trip(self):
         data = {"a": 1, "b": "two"}
         assert ServentExtraData(data).as_dict() is data
+
+
+def stored_extra(data: dict):
+    """Simulate async_get_last_extra_data returning the given stored dict."""
+
+    async def _get():
+        return ServentExtraData(data)
+
+    return _get
+
+
+class TestAttributePersistence:
+    """H4/L7 (WP7): owned attributes persist via extra_restore_state_data."""
+
+    def test_extra_restore_state_data_stores_owned_attributes_and_native_value(self):
+        # Write side: the owned attributes live under the store key, and the
+        # RestoreSensor native-value keys stay in the same dict (invariant 4).
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen"}, unit_of_measurement="°C")
+        sensor.set_new_state_and_attributes(21.5, {"note": "hi"})
+
+        stored = sensor.extra_restore_state_data.as_dict()
+        assert stored[SERVENT_ATTRIBUTES_STORE_KEY] == {"zone": "kitchen", "note": "hi", "servent_id": "s1"}
+        assert stored["native_value"] == 21.5
+        assert stored["native_unit_of_measurement"] == "°C"
+
+    async def test_restore_round_trip_keeps_only_owned_keys(self):
+        # What one instance persists, a fresh instance restores — nothing more.
+        old = make_sensor(fixed_attributes={"zone": "kitchen"})
+        old.set_new_state_and_attributes(1, {"note": "hi"})
+        stored = old.extra_restore_state_data.as_dict()
+
+        new = make_sensor(fixed_attributes={"zone": "kitchen"})
+        new.async_get_last_extra_data = stored_extra(stored)
+        await new.restore_attributes()
+
+        assert new._attr_extra_state_attributes == {"zone": "kitchen", "note": "hi", "servent_id": "s1"}
+
+    async def test_restore_does_not_resurrect_ha_generated_keys(self):
+        # H4: a legacy/foreign stored dict (the pre-WP7 code persisted nothing,
+        # so the extra data can only be another integration's leftovers or the
+        # historical full-attribute dict) must not leak into the live
+        # attributes — restore reads ONLY the store key.
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
+        sensor.async_get_last_extra_data = stored_extra(
+            {"friendly_name": "My Sensor", "icon": "mdi:thermometer", "unit_of_measurement": "°C"}
+        )
+        await sensor.restore_attributes()
+
+        assert sensor._attr_extra_state_attributes == {"zone": "kitchen", "servent_id": "s1"}
+
+    async def test_updated_fixed_attribute_wins_over_stale_restore(self):
+        # H4: current fixed_attributes are merged LAST, so a fixed attribute
+        # updated before the restart is not reverted by the stale stored value.
+        sensor = make_sensor(fixed_attributes={"zone": "attic"})
+        sensor.async_get_last_extra_data = stored_extra(
+            {SERVENT_ATTRIBUTES_STORE_KEY: {"zone": "kitchen", "note": "hi", "servent_id": "s1"}}
+        )
+        await sensor.restore_attributes()
+
+        assert sensor._attr_extra_state_attributes["zone"] == "attic"
+        assert sensor._attr_extra_state_attributes["note"] == "hi"
+
+    async def test_restore_with_no_stored_data_keeps_servent_id(self):
+        # Constraint 1: first start (nothing persisted) — servent_id stays.
+        sensor = make_sensor()
+
+        async def none_extra():
+            return None
+
+        sensor.async_get_last_extra_data = none_extra
+        await sensor.restore_attributes()
+
+        assert sensor._attr_extra_state_attributes["servent_id"] == "s1"

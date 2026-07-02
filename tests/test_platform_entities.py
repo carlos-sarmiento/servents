@@ -300,6 +300,120 @@ class TestServEntThresholdBinarySensor:
         assert await ent.restore_attributes() is None
 
 
+class TestRestoreFlowAcrossPlatforms:
+    """WP7 (H4/L7): the full async_added_to_hass restore flow, per platform.
+
+    Invariant 3: servent_id is present in the live attributes after restore on
+    every stateful platform, button included (Domovoy discovery, constraint 1).
+    Invariant 4: the native value still restores on sensor/number even though
+    the ServEnts-owned attributes now share their extra-data dict.
+    """
+
+    @staticmethod
+    def fake_extra(entity, data: dict):
+        from custom_components.servents.entity import ServentExtraData
+
+        async def _get():
+            return ServentExtraData(data)
+
+        entity.async_get_last_extra_data = _get
+
+    @staticmethod
+    def fake_last_state(entity, state: str):
+        last = MagicMock()
+        last.state = state
+
+        async def _get():
+            return last
+
+        entity.async_get_last_state = _get
+
+    async def test_sensor_restores_native_value_and_owned_attributes(self):
+        sensor = ServEntSensor(make_definition("sensor", "s1", fixed_attributes={"zone": "attic"}))
+        self.fake_extra(
+            sensor,
+            {
+                "native_value": 21.5,
+                "native_unit_of_measurement": "°C",
+                "servents_attributes": {"zone": "kitchen", "note": "hi", "servent_id": "s1"},
+            },
+        )
+        await sensor.async_added_to_hass()
+
+        assert sensor._attr_native_value == 21.5
+        assert sensor._attr_extra_state_attributes["servent_id"] == "s1"
+        assert sensor._attr_extra_state_attributes["note"] == "hi"
+        # current fixed_attributes win over the stale stored value
+        assert sensor._attr_extra_state_attributes["zone"] == "attic"
+        # HA-generated keys from the native-value store do not leak in
+        assert "native_unit_of_measurement" not in sensor._attr_extra_state_attributes
+
+    async def test_number_restores_native_value_and_servent_id(self):
+        ent = ServEntNumber(make_definition("number", "n1", mode="auto"))
+        self.fake_extra(
+            ent,
+            {
+                "native_max_value": None,
+                "native_min_value": None,
+                "native_step": None,
+                "native_unit_of_measurement": None,
+                "native_value": 7.5,
+                "servents_attributes": {"note": "hi", "servent_id": "n1"},
+            },
+        )
+        await ent.async_added_to_hass()
+
+        assert ent._attr_native_value == 7.5
+        assert ent._attr_extra_state_attributes == {"note": "hi", "servent_id": "n1"}
+
+    async def test_switch_restores_state_and_servent_id(self):
+        ent = ServEntSwitch(make_definition("switch", "sw1"))
+        self.fake_last_state(ent, "on")
+        self.fake_extra(ent, {"servents_attributes": {"note": "hi", "servent_id": "sw1"}})
+        await ent.async_added_to_hass()
+
+        assert ent._attr_is_on is True
+        assert ent._attr_extra_state_attributes == {"note": "hi", "servent_id": "sw1"}
+
+    async def test_select_restores_option_and_servent_id(self):
+        ent = ServEntSelect(make_definition("select", "sel1", options=["a", "b"]))
+        self.fake_last_state(ent, "b")
+        self.fake_extra(ent, {"servents_attributes": {"servent_id": "sel1"}})
+        await ent.async_added_to_hass()
+
+        assert ent._attr_current_option == "b"
+        assert ent._attr_extra_state_attributes["servent_id"] == "sel1"
+
+    async def test_binary_sensor_restores_state_and_servent_id(self):
+        ent = ServEntBinarySensor(make_definition("binary_sensor", "b1"))
+        self.fake_last_state(ent, "on")
+        self.fake_extra(ent, {"servents_attributes": {"servent_id": "b1"}})
+        await ent.async_added_to_hass()
+
+        assert ent._attr_is_on is True
+        assert ent._attr_extra_state_attributes["servent_id"] == "b1"
+
+    async def test_button_restore_keeps_servent_id_and_owned_attributes(self):
+        # Constraint 1's sharpest edge: Domovoy discovers buttons by the
+        # servent_id attribute too. The button now uses the base restore flow
+        # (its own async_get_last_extra_data override is gone — L7).
+        ent = ServEntButton(make_definition("button", "btn1", event="e"), MagicMock())
+        self.fake_extra(ent, {"servents_attributes": {"note": "hi", "servent_id": "btn1"}})
+        await ent.async_added_to_hass()
+
+        assert ent._attr_extra_state_attributes == {"note": "hi", "servent_id": "btn1"}
+
+    async def test_button_restore_with_foreign_extra_data_keeps_servent_id(self):
+        # Pre-WP7 nothing was ever written, so on first restart after upgrade
+        # the stored extra data (if any) is a foreign leftover without our
+        # store key. Nothing leaks in; servent_id stays.
+        ent = ServEntButton(make_definition("button", "btn1", event="e"), MagicMock())
+        self.fake_extra(ent, {"someone_elses": "data"})
+        await ent.async_added_to_hass()
+
+        assert ent._attr_extra_state_attributes == {"servent_id": "btn1"}
+
+
 class TestServEntHassIsReady:
     def test_initial_state(self):
         ent = ServEntHassIsReady()

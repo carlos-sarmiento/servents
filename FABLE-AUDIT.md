@@ -138,7 +138,15 @@ instance-level assignment is never read — verified experimentally against the
 installed HA: the combined set stays empty. The intent (keep `servent_id` and
 fixed attributes out of the recorder) is entirely unrealized, and per-config
 keys can't be expressed this way at all (the set must be static per class,
-or use `MATCH_ALL`).
+or use `MATCH_ALL`). **Fixed** in WP7: `ServEntEntity` carries a class-level
+`_unrecorded_attributes = frozenset({MATCH_ALL})` (from
+`homeassistant.const`). Per-config fixed-attribute keys are dynamic, so the
+only policy that fully realizes the intent is excluding all
+extra_state_attributes from the recorder — including app-pushed dynamic
+attributes, a deliberate trade-off; the recorder keeps device_class,
+state_class, unit_of_measurement, and friendly_name regardless
+(`_MATCH_ALL_KEEP` in `recorder/db_schema.py`), and restart survival now
+comes from `extra_restore_state_data` (L7), not the recorder.
 
 ### H4. `restore_attributes` pollutes entities with the full historical attribute set
 
@@ -161,7 +169,14 @@ attribute is silently reverted to its pre-restart value on every restart.
 
 Fix: restore only the keys the integration itself wrote (or persist them via
 `extra_restore_state_data` — see L7, the machinery for this exists but is
-unused), and merge current `fixed_attributes` last.
+unused), and merge current `fixed_attributes` last. **Fixed** in WP7: the
+base `extra_restore_state_data` persists the owned attributes under a
+`servents_attributes` key merged into the platform's own extra-data dict
+(preserving RestoreSensor/RestoreNumber native-value data), and
+`restore_attributes` reads only that key — never `state.attributes` — with
+current `fixed_attributes` and `servent_id` merged last (constraint 1).
+Legacy pre-WP7 stored data has no such key and is deliberately not restored
+(it was never written by the integration anyway).
 
 ### H5. Dependency declarations are inverted: `pytz` used but not declared, `servents-data-model` declared but never imported
 
@@ -446,7 +461,11 @@ its entities, so the fresh add carries no duplicate unique_id.
   ServEnts-owned attributes (fixing H4), and `ServEntButton.restore_attributes`
   already reads `async_get_last_extra_data` (`button.py:45`) — but nothing
   ever *writes* extra data, so that branch can only restore other
-  integrations' leftovers.
+  integrations' leftovers. **Fixed** in WP7: the write side
+  (`ServEntEntity.extra_restore_state_data`) and the read side (base
+  `restore_attributes`) are both implemented in the base; the button's own
+  `restore_attributes` override is gone, and a stored dict lacking the
+  `servents_attributes` key (foreign leftovers) restores nothing.
 - **L8. Fixed attributes silently ignored for threshold sensors.**
   `ServEntThresholdBinarySensor.extra_state_attributes`
   (`binary_sensor.py:122-128`) merges threshold internals and `servent_id`

@@ -2,7 +2,7 @@ import logging
 from typing import Any, Generic, TypeVar
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import MATCH_ALL, EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
@@ -14,6 +14,10 @@ from .registrar import get_registrar_for_entry
 _LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=EntityConfig)
+
+# Key under which the ServEnts-owned extra attributes are persisted inside the
+# restore-state extra data dict (see ServEntEntity.extra_restore_state_data).
+SERVENT_ATTRIBUTES_STORE_KEY = "servents_attributes"
 
 
 def register_platform_builder(
@@ -62,6 +66,17 @@ class ServEntEntity(Generic[T], RestoreEntity):
     restores one) a ``_restore_native_state`` hook.
     """
 
+    # H3: this must be a CLASS attribute — Entity.__init_subclass__ folds it
+    # into __combined_unrecorded_attributes at class-creation time, so the old
+    # instance-level assignment in __init__ was silently ignored. Per-config
+    # fixed_attributes keys are dynamic and cannot appear in a static set, so
+    # the policy is MATCH_ALL: none of the extra_state_attributes are written
+    # to the recorder (the recorder still keeps device_class, state_class,
+    # unit_of_measurement and friendly_name — see _MATCH_ALL_KEEP in
+    # recorder/db_schema.py). Restart survival does not depend on the recorder:
+    # the owned attributes are persisted via extra_restore_state_data below.
+    _unrecorded_attributes = frozenset({MATCH_ALL})
+
     servent_config: T
     servent_id: str
     fixed_attributes: dict[str, Any]
@@ -84,7 +99,6 @@ class ServEntEntity(Generic[T], RestoreEntity):
         # published from creation.
         self.set_new_state_and_attributes(config.default_state, self.fixed_attributes)
 
-        self._unrecorded_attributes = frozenset(["servent_config", *self.fixed_attributes.keys()])
         self._attr_entity_registry_enabled_default = not config.disabled_by_default
 
     def apply_config(self, config: T) -> None:
@@ -127,10 +141,46 @@ class ServEntEntity(Generic[T], RestoreEntity):
         await self._restore_native_state()
         await self.restore_attributes()
 
+    @property
+    def extra_restore_state_data(self) -> ExtraStoredData:
+        """Persist the ServEnts-owned extra attributes across restarts (L7).
+
+        The owned attributes are stored under SERVENT_ATTRIBUTES_STORE_KEY
+        inside the platform's own extra-data dict. RestoreSensor and
+        RestoreNumber already use extra_restore_state_data for the native
+        value, and their ``from_dict`` readers look up only their own keys by
+        name, ignoring extras — so merging our key into their dict preserves
+        native-value restore while adding attribute persistence. On platforms
+        without their own extra data (button/switch/select/binary_sensor)
+        ``super()`` yields RestoreEntity's None and the dict holds only ours.
+        """
+        platform_extra = super().extra_restore_state_data
+        platform_dict = platform_extra.as_dict() if platform_extra is not None else {}
+        return ServentExtraData(
+            platform_dict | {SERVENT_ATTRIBUTES_STORE_KEY: dict(self._attr_extra_state_attributes)}
+        )
+
     async def restore_attributes(self) -> None:
-        state = await self.async_get_last_state()
-        attributes = state.attributes if state else {}
-        self._attr_extra_state_attributes = self._attr_extra_state_attributes | self.fixed_attributes | attributes
+        """Restore only the ServEnts-owned attributes; current fixed_attributes win.
+
+        H4: the previous implementation merged the full historical
+        ``state.attributes`` — including HA-generated keys (friendly_name,
+        icon, device_class, unit_of_measurement, ...) — and merged it LAST, so
+        stale values overrode updated fixed attributes. Now only the dict the
+        integration itself persisted via extra_restore_state_data is read, and
+        the current ``fixed_attributes`` (+ servent_id, constraint 1) are
+        merged last. Data persisted before this scheme existed is deliberately
+        not restored: the legacy full-attributes dict cannot be split into
+        owned and HA-generated keys.
+        """
+        last_extra = await self.async_get_last_extra_data()
+        stored = last_extra.as_dict() if last_extra is not None else {}
+        owned = stored.get(SERVENT_ATTRIBUTES_STORE_KEY)
+        if not isinstance(owned, dict):
+            owned = {}
+        self._attr_extra_state_attributes = (
+            self._attr_extra_state_attributes | owned | self.fixed_attributes | {"servent_id": self.servent_id}
+        )
 
     def verified_schedule_update_ha_state(self) -> None:
         if self.hass is not None:
