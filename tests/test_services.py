@@ -223,13 +223,14 @@ class TestCleanupDevices:
         assert removed == {"stale-entry"}
 
     async def test_stale_device_without_servent_in_identifier_value_is_not_removed(self):
-        # Quirk: a stale servents-domain device whose identifier value does not
-        # contain the substring "servent" is never selected for cleanup.
+        # Fixed (H2): candidate selection now filters by domain == DOMAIN, not
+        # by substring in the identifier value. A stale servents-domain device
+        # IS now selected and removed even when its value lacks "servent".
         stale = MagicMock(id="stale-entry", identifiers={("servents", "device-abc")})
-        assert await self.run_cleanup([stale]) == set()
+        assert await self.run_cleanup([stale]) == {"stale-entry"}
 
     async def test_foreign_device_with_servent_in_identifier_value_is_removed(self):
-        # Quirk (flip side): a device from ANOTHER integration is selected and
-        # removed if its identifier value happens to contain "servent".
+        # Fixed (H2): a device from ANOTHER integration is no longer selected
+        # for removal just because its identifier value contains "servent".
         foreign = MagicMock(id="foreign-entry", identifiers={("zwave", "my-servent-node")})
-        assert await self.run_cleanup([foreign]) == {"foreign-entry"}
+        assert await self.run_cleanup([foreign]) == set()

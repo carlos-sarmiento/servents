@@ -20,8 +20,6 @@ Notable properties of the format:
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from custom_components.servents import handle_create_entity, handle_update_entity
 from custom_components.servents.data_carriers import (
     ServentDeviceDefinition,
@@ -83,11 +81,13 @@ class TestDomovoyCreateEntity:
         assert "app_name" not in entity._attr_extra_state_attributes
 
     async def test_device_definition_dict_is_not_coerced_eagerly(self, registrar):
-        # Quirk (FABLE-AUDIT H8): only the device_config key is coerced in
-        # to_dataclass; Domovoy's device_definition key lands as a raw dict.
+        # Fixed (FABLE-AUDIT H8 stopgap): to_dataclass now coerces a dict
+        # device_definition into ServentDeviceDefinition eagerly, exactly as
+        # device_config was already coerced. WP3 will delete this stopgap
+        # when serde.from_dict handles it natively.
         await self.create(registrar)
         definition = registrar.get_all_entities()[0]
-        assert isinstance(definition.device_definition, dict)
+        assert isinstance(definition.device_definition, ServentDeviceDefinition)
 
     def test_device_info_property_coerces_lazily(self):
         # The dict is converted only when HA reads the device_info property.
@@ -99,14 +99,13 @@ class TestDomovoyCreateEntity:
         assert isinstance(entity.servent_config.device_definition, ServentDeviceDefinition)
 
     async def test_cleanup_devices_crashes_on_uncoerced_device_definition(self, registrar):
-        # Bug (FABLE-AUDIT H8): if device_info was never read (e.g. after the
-        # re-create flow swaps a fresh definition into the live entity),
-        # handle_cleanup_devices calls .get_device_id() on the raw dict and
-        # raises. This pins the bug; the fix flips this test to "succeeds".
+        # Fixed (FABLE-AUDIT H8 stopgap): to_dataclass now coerces device_definition
+        # dicts eagerly, so cleanup_devices can call .get_device_id() safely even
+        # when device_info was never read. WP3 will supersede this stopgap.
         from custom_components.servents import setup
 
         await self.create(registrar)
-        assert isinstance(registrar.get_all_entities()[0].device_definition, dict)
+        assert isinstance(registrar.get_all_entities()[0].device_definition, ServentDeviceDefinition)
 
         hass = MagicMock()
         setup(hass, MagicMock())
@@ -119,8 +118,7 @@ class TestDomovoyCreateEntity:
         device_registry = MagicMock()
         device_registry.devices.values.return_value = []
         with patch("custom_components.servents.dr.async_get", return_value=device_registry):
-            with pytest.raises(AttributeError, match="get_device_id"):
-                await cleanup(FakeServiceCall({}))
+            await cleanup(FakeServiceCall({}))
 
     async def test_recreate_from_domovoy_app_restart_updates_in_place(self, registrar):
         # Domovoy re-sends create_entity for every entity on app restart.

@@ -126,6 +126,9 @@ def to_dataclass(data: dict[str, Any]) -> BaseServentEntityDefinition:
     if "device_config" in data and data["device_config"]:
         data["device_definition"] = ServentDeviceDefinition.from_dict(data["device_config"])
 
+    if "device_definition" in data and isinstance(data["device_definition"], dict):
+        data["device_definition"] = ServentDeviceDefinition.from_dict(data["device_definition"])
+
     builder = EntityTypeToDataclassMap[entity_type]
 
     return clean_params_and_build(builder, data)

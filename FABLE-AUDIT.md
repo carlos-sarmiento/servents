@@ -126,7 +126,7 @@ devices = [d for d in device_registry.devices.values()
   (e.g. `device-abc`) is **never** cleaned up, which defeats the purpose of
   the service.
 
-Fix: filter on `a[0] == DOMAIN`.
+Fix: filter on `a[0] == DOMAIN`. **Fixed** in WP1b.
 
 ### H3. `_unrecorded_attributes` assignment silently does nothing
 
@@ -253,7 +253,7 @@ for its main use case with the production client. Fix: coerce
 `device_definition` dicts in `to_dataclass` (alongside `device_config`), or
 land the `servents-data-model` migration, where `serde.from_dict`
 deserializes the nested `DeviceConfig` natively (verified — see the adoption
-section).
+section). **Fixed** in WP1b (stopgap coercion in `to_dataclass`; superseded by WP3's native `serde.from_dict` deserialization).
 
 ---
 

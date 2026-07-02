@@ -93,7 +93,7 @@ def setup(hass: HomeAssistant, _entry: ConfigEntry):
 
         device_ids = set([x.device_definition.get_device_id() for x in live_entity if x.device_definition])
 
-        devices = [d for d in device_registry.devices.values() if any(["servent" in a[1] for a in d.identifiers])]
+        devices = [d for d in device_registry.devices.values() if any([a[0] == DOMAIN for a in d.identifiers])]
 
         for device_entry in devices:
             for identifier in device_entry.identifiers:
