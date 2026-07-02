@@ -1,7 +1,7 @@
 from typing import Any, Generic, TypeVar
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import MATCH_ALL, EntityCategory
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import ExtraStoredData, RestoreEntity
@@ -65,14 +65,17 @@ class ServEntEntity(Generic[T], RestoreEntity):
 
     # H3: this must be a CLASS attribute — Entity.__init_subclass__ folds it
     # into __combined_unrecorded_attributes at class-creation time, so the old
-    # instance-level assignment in __init__ was silently ignored. Per-config
-    # fixed_attributes keys are dynamic and cannot appear in a static set, so
-    # the policy is MATCH_ALL: none of the extra_state_attributes are written
-    # to the recorder (the recorder still keeps device_class, state_class,
-    # unit_of_measurement and friendly_name — see _MATCH_ALL_KEEP in
-    # recorder/db_schema.py). Restart survival does not depend on the recorder:
-    # the owned attributes are persisted via extra_restore_state_data below.
-    _unrecorded_attributes = frozenset({MATCH_ALL})
+    # instance-level assignment in __init__ was silently ignored.
+    #
+    # Policy: exclude ONLY servent_id from the recorder. It is a routing
+    # constant (identical on every state row, no analytical value), so keeping
+    # it out of history trims recorder writes without losing anything. The
+    # app-pushed dynamic attributes AND the fixed_attributes ARE recorded —
+    # that is real data and must survive in history. (A static per-class set
+    # cannot enumerate the per-config fixed_attributes keys; excluding them
+    # would require a fragile per-instance override of an HA internal, and
+    # recording them costs a little disk, not lost data.)
+    _unrecorded_attributes = frozenset({"servent_id"})
 
     servent_config: T
     servent_id: str

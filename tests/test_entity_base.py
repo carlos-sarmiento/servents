@@ -4,7 +4,7 @@ ServEntSensor is used as the concrete vehicle since the base classes rely on
 subclass hooks (update_specific_entity_config / set_new_state_and_attributes).
 """
 
-from homeassistant.const import MATCH_ALL, EntityCategory
+from homeassistant.const import EntityCategory
 from servents.data_model.entity_configs import DeviceConfig
 
 from custom_components.servents.entity import SERVENT_ATTRIBUTES_STORE_KEY, ServentExtraData
@@ -50,20 +50,21 @@ class TestServentConfigure:
         assert sensor.fixed_attributes == {"zone": "kitchen", "servent_id": "s1"}
         assert sensor._attr_extra_state_attributes == {"zone": "kitchen", "servent_id": "s1"}
 
-    def test_unrecorded_attributes_is_class_level_match_all(self):
-        # H3 (WP7): the old instance-level assignment in __init__ was provably
-        # ignored (Entity.__init_subclass__ folds the CLASS attribute into
-        # __combined_unrecorded_attributes at class-creation time). Per-config
-        # fixed-attribute keys are dynamic and cannot appear in a static set,
-        # so the policy is class-level MATCH_ALL: no extra_state_attributes are
-        # recorded (restart survival comes from extra_restore_state_data, not
-        # the recorder).
-        assert ServEntSensor._unrecorded_attributes == frozenset({MATCH_ALL})
-        # And it must land in the combined set HA actually reads — the exact
-        # thing the instance-level assignment failed to do.
-        assert MATCH_ALL in ServEntSensor._Entity__combined_unrecorded_attributes
+    def test_unrecorded_attributes_excludes_only_servent_id(self):
+        # H3 (WP7, revised): the old instance-level assignment in __init__ was
+        # provably ignored (Entity.__init_subclass__ folds the CLASS attribute
+        # into __combined_unrecorded_attributes at class-creation time). The
+        # policy excludes ONLY servent_id (a routing constant) from the
+        # recorder; the app-pushed dynamic attributes and the fixed_attributes
+        # are recorded — that data must not be dropped from history.
+        assert ServEntSensor._unrecorded_attributes == frozenset({"servent_id"})
+        # It must land in the combined set HA actually reads — the exact thing
+        # the instance-level assignment failed to do.
+        assert "servent_id" in ServEntSensor._Entity__combined_unrecorded_attributes
+        # Fixed-attribute keys must NOT be excluded (they stay in history).
+        assert "zone" not in ServEntSensor._Entity__combined_unrecorded_attributes
         sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
-        assert sensor._unrecorded_attributes == frozenset({MATCH_ALL})
+        assert sensor._unrecorded_attributes == frozenset({"servent_id"})
 
     def test_enabled_by_default(self):
         assert make_sensor()._attr_entity_registry_enabled_default is True

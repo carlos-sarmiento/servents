@@ -138,15 +138,19 @@ instance-level assignment is never read — verified experimentally against the
 installed HA: the combined set stays empty. The intent (keep `servent_id` and
 fixed attributes out of the recorder) is entirely unrealized, and per-config
 keys can't be expressed this way at all (the set must be static per class,
-or use `MATCH_ALL`). **Fixed** in WP7: `ServEntEntity` carries a class-level
-`_unrecorded_attributes = frozenset({MATCH_ALL})` (from
-`homeassistant.const`). Per-config fixed-attribute keys are dynamic, so the
-only policy that fully realizes the intent is excluding all
-extra_state_attributes from the recorder — including app-pushed dynamic
-attributes, a deliberate trade-off; the recorder keeps device_class,
-state_class, unit_of_measurement, and friendly_name regardless
-(`_MATCH_ALL_KEEP` in `recorder/db_schema.py`), and restart survival now
-comes from `extra_restore_state_data` (L7), not the recorder.
+or use `MATCH_ALL`). **Fixed** in WP7 (revised): `ServEntEntity` carries a
+class-level `_unrecorded_attributes = frozenset({"servent_id"})`. This
+excludes only the `servent_id` routing constant from the recorder (identical
+on every state row, no analytical value); the app-pushed **dynamic
+attributes and the fixed_attributes are recorded** — that is real data and
+must survive in history. WP7 originally shipped `MATCH_ALL`, which also
+suppressed the dynamic attributes; that was corrected because the objective
+was to trim wasted DB space on constants, not to drop data. A static
+per-class set cannot enumerate the per-config fixed-attribute keys, so
+excluding them too would require a fragile per-instance override of an HA
+internal — not worth it; recording them costs a little disk, not lost data.
+Restart survival comes from `extra_restore_state_data` (L7), independent of
+the recorder.
 
 ### H4. `restore_attributes` pollutes entities with the full historical attribute set
 
