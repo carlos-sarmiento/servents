@@ -17,34 +17,60 @@ from servents.data_model.entity_configs import (
 
 from .definitions import get_device_info
 from .entity import ServEntEntity
-from .registrar import get_registrar
+from .registrar import ServentDefinitionRegistrar, get_registrar_for_entry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    _config_entry: ConfigEntry,
+    config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    configure_homeassistant_up_sensor(hass, async_add_entities)
+    registrar = get_registrar_for_entry(config_entry)
 
-    get_registrar().register_builder_for_definition(
+    configure_homeassistant_up_sensor(hass, registrar, async_add_entities)
+
+    registrar.register_builder_for_definition(
         BinarySensorConfig, lambda x: ServEntBinarySensor(x), async_add_entities
     )
-    get_registrar().register_builder_for_definition(
+    registrar.register_builder_for_definition(
         ThresholdBinarySensorConfig, lambda x: ServEntThresholdBinarySensor(hass, x), async_add_entities
     )
 
 
 def configure_homeassistant_up_sensor(
     hass: HomeAssistant,
+    registrar: ServentDefinitionRegistrar,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    # Create Binary Sensor for HASS IS UP
+    # The hass-up sensor and the STARTED/STOP listeners are created once per
+    # config-entry lifecycle. The single sensor instance is stored on the
+    # registrar so the listeners drive the same object HA tracks (M11), and the
+    # one handler keeps the visible sensor and the registrar's is_hass_up flag
+    # (read by the servent/hass-state websocket) in sync (M7).
     uptime_entity = ServEntHassIsReady()
+
+    # Seed both effects from the real core state: on a reload after HA is
+    # already running, EVENT_HOMEASSISTANT_STARTED will not fire again, so the
+    # value must be derived rather than defaulted (M6).
+    uptime_entity.set_is_on(hass.is_running)
+    registrar.set_hass_up(hass.is_running)
+
     async_add_entities([uptime_entity], True)
 
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, lambda _x: uptime_entity.set_state(True))
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _x: uptime_entity.set_state(False))
+    def set_state(state: bool) -> None:
+        uptime_entity.set_is_on(state)
+        registrar.set_hass_up(state)
+        uptime_entity.schedule_update_ha_state()
+
+    # STARTED and STOP each fire at most once per HA lifetime, so listen_once is
+    # correct. Unsubscribe handles are held on the registrar and released on
+    # unload so a reload does not leak the previous setup's listeners (M7/L9).
+    registrar.unsub_hass_state_listeners.append(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, lambda _x: set_state(True))
+    )
+    registrar.unsub_hass_state_listeners.append(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _x: set_state(False))
+    )
 
 
 class ServEntHassIsReady(BinarySensorEntity):
@@ -65,10 +91,8 @@ class ServEntHassIsReady(BinarySensorEntity):
         )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def set_state(self, state: bool):
+    def set_is_on(self, state: bool) -> None:
         self._attr_is_on = state
-        get_registrar().set_hass_up(state)
-        self.schedule_update_ha_state()
 
 
 class ServEntBinarySensor(ServEntEntity[BinarySensorConfig], BinarySensorEntity, RestoreEntity):

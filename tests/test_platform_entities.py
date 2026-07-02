@@ -258,15 +258,51 @@ class TestServEntHassIsReady:
         assert ent._attr_extra_state_attributes == {"servent_flag": "servent-hass-is-up"}
         assert ent._attr_device_info["identifiers"] == {("servents", "device-servent_core_device")}
 
-    def test_set_state_updates_entity_and_registrar(self, registrar):
+    def test_set_is_on_updates_only_the_entity(self):
+        # M7: the entity no longer reaches the registrar itself. It exposes a
+        # plain state setter; the single STARTED/STOP handler (registered by
+        # configure_homeassistant_up_sensor) drives both the entity and the
+        # registrar's is_hass_up flag together.
         ent = ServEntHassIsReady()
-        ent.hass = MagicMock()
-        ent.schedule_update_ha_state = MagicMock()
-
-        ent.set_state(True)
+        ent.set_is_on(True)
         assert ent._attr_is_on is True
+        ent.set_is_on(False)
+        assert ent._attr_is_on is False
+
+    def test_configure_registers_single_listener_pair_and_syncs_both(self, registrar):
+        # M7/M11: one place registers the STARTED/STOP listeners, seeds state
+        # from hass.is_running (M6), stores the sensor + unsub handles, and
+        # keeps the visible sensor and registrar.is_hass_up in sync.
+        from custom_components.servents.binary_sensor import configure_homeassistant_up_sensor
+
+        hass = MagicMock()
+        hass.is_running = False
+        added = []
+        hass.bus.async_listen_once.side_effect = lambda event, cb: (event, cb)
+
+        def async_add_entities(entities, _update=False):
+            added.extend(entities)
+
+        configure_homeassistant_up_sensor(hass, registrar, async_add_entities)
+
+        # One sensor added; two listeners (STARTED, STOP); two unsub handles held.
+        assert len(added) == 1
+        sensor = added[0]
+        assert hass.bus.async_listen_once.call_count == 2
+        assert len(registrar.unsub_hass_state_listeners) == 2
+
+        # initial value derived from hass.is_running
+        assert sensor._attr_is_on is False
+        assert registrar.is_hass_up is False
+
+        sensor.schedule_update_ha_state = MagicMock()
+        started_cb = hass.bus.async_listen_once.call_args_list[0].args[1]
+        stop_cb = hass.bus.async_listen_once.call_args_list[1].args[1]
+
+        started_cb(MagicMock())
+        assert sensor._attr_is_on is True
         assert registrar.is_hass_up is True
 
-        ent.set_state(False)
-        assert ent._attr_is_on is False
+        stop_cb(MagicMock())
+        assert sensor._attr_is_on is False
         assert registrar.is_hass_up is False

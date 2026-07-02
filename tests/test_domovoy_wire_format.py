@@ -57,7 +57,9 @@ class TestDomovoyCreateEntity:
         registrar.register_builder_for_definition(
             SensorConfig, lambda d: ServEntSensor(d), MagicMock()
         )
-        await handle_create_entity(FakeServiceCall({"entities": [payload or domovoy_sensor_payload()]}))
+        await handle_create_entity(
+            FakeServiceCall({"entities": [payload or domovoy_sensor_payload()]}, registrar)
+        )
         return registrar.get_live_entity_for_servent_id("my_app-temperature")
 
     async def test_create_entity_succeeds(self, registrar):
@@ -117,14 +119,14 @@ class TestDomovoyCreateEntity:
         device_registry = MagicMock()
         device_registry.devices.values.return_value = []
         with patch("custom_components.servents.dr.async_get", return_value=device_registry):
-            await cleanup(FakeServiceCall({}))
+            await cleanup(FakeServiceCall({}, registrar))
 
     async def test_recreate_from_domovoy_app_restart_updates_in_place(self, registrar):
         # Domovoy re-sends create_entity for every entity on app restart.
         # The second call must reconfigure the same live entity, not fail.
         entity = await self.create(registrar)
         renamed = domovoy_sensor_payload() | {"name": "Temperature v2"}
-        await handle_create_entity(FakeServiceCall({"entities": [renamed]}))
+        await handle_create_entity(FakeServiceCall({"entities": [renamed]}, registrar))
         assert registrar.get_live_entity_for_servent_id("my_app-temperature") is entity
         assert entity._attr_name == "Temperature v2"
 
@@ -137,7 +139,7 @@ class TestDomovoyUpdateState:
 
         await handle_update_entity(
             FakeServiceCall(
-                {"servent_id": "my_app-temperature", "state": 21.5, "attributes": {}}
+                {"servent_id": "my_app-temperature", "state": 21.5, "attributes": {}}, registrar
             )
         )
         live.set_new_state_and_attributes.assert_called_once_with(21.5, {})
@@ -160,7 +162,7 @@ class TestDomovoyUpdateState:
         registrar.register_live_entity("b1", button)
 
         await handle_update_entity(
-            FakeServiceCall({"servent_id": "b1", "state": "anything", "attributes": {}})
+            FakeServiceCall({"servent_id": "b1", "state": "anything", "attributes": {}}, registrar)
         )
         # No exception, no state: buttons have no state to set.
         assert not hasattr(button, "_attr_native_value")

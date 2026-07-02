@@ -7,16 +7,18 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from servents.data_model.entity_configs import SwitchConfig
 
 from .entity import ServEntEntity
-from .registrar import get_registrar
+from .registrar import get_registrar_for_entry
 
 
 async def async_setup_entry(
     _hass: HomeAssistant,
-    _config_entry: ConfigEntry,
+    config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar().register_builder_for_definition(SwitchConfig, lambda x: ServEntSwitch(x), async_add_entities)
+    get_registrar_for_entry(config_entry).register_builder_for_definition(
+        SwitchConfig, lambda x: ServEntSwitch(x), async_add_entities
+    )
 
 
 class ServEntSwitch(ServEntEntity[SwitchConfig], SwitchEntity, RestoreEntity):

@@ -6,18 +6,19 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from servents.data_model.entity_configs import NumberConfig
 
-from custom_components.servents.registrar import get_registrar
-
 from .entity import ServEntEntity
+from .registrar import get_registrar_for_entry
 
 
 async def async_setup_entry(
     _hass: HomeAssistant,
-    _config_entry: ConfigEntry,
+    config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar().register_builder_for_definition(NumberConfig, lambda x: ServEntNumber(x), async_add_entities)
+    get_registrar_for_entry(config_entry).register_builder_for_definition(
+        NumberConfig, lambda x: ServEntNumber(x), async_add_entities
+    )
 
 
 class ServEntNumber(ServEntEntity[NumberConfig], RestoreNumber):

@@ -21,20 +21,20 @@ def register_builder(registrar, definition_type, builder=None):
 
 
 class TestHandleCreateEntity:
-    async def test_no_entities_raises(self):
+    async def test_no_entities_raises(self, registrar):
         with pytest.raises(Exception, match="Call does not define any entities"):
-            await handle_create_entity(FakeServiceCall({}))
+            await handle_create_entity(FakeServiceCall({}, registrar))
 
-    async def test_empty_entities_list_raises(self):
+    async def test_empty_entities_list_raises(self, registrar):
         with pytest.raises(Exception, match="Call does not define any entities"):
-            await handle_create_entity(FakeServiceCall({"entities": []}))
+            await handle_create_entity(FakeServiceCall({"entities": []}, registrar))
 
     async def test_creates_definition_and_builds_entity(self, registrar):
         builder = register_builder(registrar, SensorConfig)
 
         await handle_create_entity(
             FakeServiceCall(
-                {"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]}
+                {"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]}, registrar
             )
         )
 
@@ -55,7 +55,8 @@ class TestHandleCreateEntity:
                         {"entity_type": "sensor", "servent_id": "s1", "name": "S1"},
                         {"entity_type": "switch", "servent_id": "sw1", "name": "SW1"},
                     ]
-                }
+                },
+                registrar,
             )
         )
 
@@ -76,7 +77,8 @@ class TestHandleCreateEntity:
                             {"entity_type": "sensor", "servent_id": "s1", "name": "S1"},
                             {"entity_type": "bogus", "servent_id": "s2", "name": "S2"},
                         ]
-                    }
+                    },
+                    registrar,
                 )
             )
 
@@ -89,10 +91,10 @@ class TestHandleCreateEntity:
         register_builder(registrar, SwitchConfig)
 
         await handle_create_entity(
-            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]})
+            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]}, registrar)
         )
         await handle_create_entity(
-            FakeServiceCall({"entities": [{"entity_type": "switch", "servent_id": "s1", "name": "S1"}]})
+            FakeServiceCall({"entities": [{"entity_type": "switch", "servent_id": "s1", "name": "S1"}]}, registrar)
         )
 
         # original definition survives
@@ -103,12 +105,12 @@ class TestHandleCreateEntity:
         builder = register_builder(registrar, SensorConfig)
 
         await handle_create_entity(
-            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "First"}]})
+            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "First"}]}, registrar)
         )
         live = registrar.get_live_entity_for_servent_id("s1")
 
         await handle_create_entity(
-            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "Second"}]})
+            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "Second"}]}, registrar)
         )
 
         # builder is only invoked once; the existing live entity is reconfigured
@@ -124,14 +126,14 @@ class TestHandleUpdateEntity:
         registrar.register_live_entity("s1", live)
 
         await handle_update_entity(
-            FakeServiceCall({"servent_id": "s1", "state": 42, "attributes": {"a": 1}})
+            FakeServiceCall({"servent_id": "s1", "state": 42, "attributes": {"a": 1}}, registrar)
         )
 
         live.set_new_state_and_attributes.assert_called_once_with(42, {"a": 1})
         live.verified_schedule_update_ha_state.assert_called_once()
 
-    async def test_unknown_servent_id_warns_and_does_not_raise(self, caplog):
-        await handle_update_entity(FakeServiceCall({"servent_id": "ghost", "state": 1}))
+    async def test_unknown_servent_id_warns_and_does_not_raise(self, registrar, caplog):
+        await handle_update_entity(FakeServiceCall({"servent_id": "ghost", "state": 1}, registrar))
         assert "Non Registered ID ghost" in caplog.text
 
     async def test_extraneous_keys_in_call_are_ignored(self, registrar):
@@ -139,7 +141,7 @@ class TestHandleUpdateEntity:
         registrar.register_live_entity("s1", live)
 
         await handle_update_entity(
-            FakeServiceCall({"servent_id": "s1", "state": "on", "junk_key": True})
+            FakeServiceCall({"servent_id": "s1", "state": "on", "junk_key": True}, registrar)
         )
 
         live.set_new_state_and_attributes.assert_called_once_with("on", {})
@@ -154,7 +156,7 @@ class TestRegisterAndUpdateAllEntities:
         registrar.register_definition(make_definition("sensor", "existing", name="Old"))
         registrar.register_definition(make_definition("sensor", "new-one"))
 
-        register_and_update_all_entities()
+        register_and_update_all_entities(registrar)
 
         # "new-one" is built; "existing" is reconfigured in place
         assert builder.call_count == 1
@@ -163,7 +165,7 @@ class TestRegisterAndUpdateAllEntities:
         existing_live.verified_schedule_update_ha_state.assert_called_once()
 
     def test_noop_when_registry_is_empty(self, registrar):
-        register_and_update_all_entities()
+        register_and_update_all_entities(registrar)
         assert registrar.live_entities == {}
 
 
@@ -184,9 +186,10 @@ class TestSetup:
 
 class TestCleanupDevices:
     @staticmethod
-    def get_cleanup_handler(hass):
+    def get_cleanup_handler():
         from custom_components.servents import setup
 
+        hass = MagicMock()
         setup(hass, MagicMock())
         return next(
             call.args[2]
@@ -194,13 +197,15 @@ class TestCleanupDevices:
             if call.args[1] == "cleanup_devices"
         )
 
-    async def run_cleanup(self, devices):
-        cleanup = self.get_cleanup_handler(MagicMock())
+    async def run_cleanup(self, devices, registrar=None):
+        from custom_components.servents.registrar import ServentDefinitionRegistrar
+
+        cleanup = self.get_cleanup_handler()
         device_registry = MagicMock()
         device_registry.devices.values.return_value = devices
 
         with patch("custom_components.servents.dr.async_get", return_value=device_registry):
-            await cleanup(FakeServiceCall({}))
+            await cleanup(FakeServiceCall({}, registrar or ServentDefinitionRegistrar()))
 
         return {call.args[0] for call in device_registry.async_remove_device.call_args_list}
 
@@ -217,7 +222,7 @@ class TestCleanupDevices:
         kept = MagicMock(id="kept-entry", identifiers={("servents", "device-kept-servent-dev")})
         stale = MagicMock(id="stale-entry", identifiers={("servents", "device-stale-servent-dev")})
 
-        removed = await self.run_cleanup([kept, stale])
+        removed = await self.run_cleanup([kept, stale], registrar)
         assert removed == {"stale-entry"}
 
     async def test_stale_device_without_servent_in_identifier_value_is_not_removed(self):

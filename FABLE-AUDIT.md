@@ -309,6 +309,7 @@ exact-type only while `register_definition` allows *subclass* replacement
 accept a definition it is then unable to build
 (pinned in `test_registrar.py:41-49` and `103-112`). The two checks should
 agree; keying by the type object with exact-type registration is simplest.
+**Fixed** in WP4.
 
 ### M6. `reset_registrar` claims HA is up on a fresh registrar
 
@@ -318,7 +319,9 @@ a config-entry unload (the one place `reset_registrar` is called), the
 websocket `servent/hass-state` endpoint reports HA as "up" regardless of
 actual state. This looks like a workaround for something rather than a
 decision; at minimum it deserves a comment, more likely it should carry the
-previous value.
+previous value. **Fixed** in WP4: the singleton and `reset_registrar` are
+gone; a fresh per-entry registrar seeds `is_hass_up` from `hass.is_running`
+so it reflects the real core state rather than a hardcoded `True`.
 
 ### M7. Two parallel mechanisms track "HASS is up"
 
@@ -331,6 +334,10 @@ previous value.
 Redundant, order-dependent, and re-registered on every config-entry reload
 (`async_listen_once` listeners from previous setups are never cleaned up —
 none of the listener/service registrations hold unsubscribe handles).
+**Fixed** in WP4: a single STARTED/STOP listener pair is registered in
+`configure_homeassistant_up_sensor`, whose one handler updates both the
+visible sensor and the registrar's `is_hass_up` flag; the unsubscribe
+handles are held on the registrar and released in `async_unload_entry`.
 
 ### M8. No input validation on any service
 
@@ -379,7 +386,11 @@ legacy `device_config` alias is handled with a shallow copy.
 platform setup and calls `async_add_entities` with a fixed unique_id. On a
 reload, HA rejects the duplicate unique_id with an error log, and the fresh
 `ServEntHassIsReady` instance that the new listeners point at is not the one
-in the state machine.
+in the state machine. **Fixed** in WP4: the sensor is created once per
+config-entry lifecycle (the duplicate `binary_sensor.py` listener pair and
+the second `set_hass_up` path are gone), and the single listener drives the
+same instance HA tracks. On reload the previous entry has already unloaded
+its entities, so the fresh add carries no duplicate unique_id.
 
 ---
 
@@ -423,7 +434,10 @@ in the state machine.
   but not `fixed_attributes`, unlike every other platform.
 - **L9. Services are never unregistered** on unload, and the websocket
   command / event listeners from `async_setup_entry` are re-registered on
-  each reload (related to M7/M11).
+  each reload (related to M7/M11). **Listener half fixed** in WP4: the
+  STARTED/STOP listeners now hold unsubscribe handles on the registrar,
+  released in `async_unload_entry`. The service-unregister half remains for
+  WP5.
 - **L10. `hass.bus.async_fire("servent.core_reloaded")`** fires on *every*
   setup, including first install — the name overpromises.
 - **L11. `inspect.signature` on every build** (`data_carriers.py:143`) —
@@ -448,7 +462,12 @@ reset fixture, why reload semantics are fragile (H1/M6/M7/M11), and why the
 integration could never support two config entries. HA's idiom is to hang
 runtime state off the config entry (`entry.runtime_data`). Moving the
 registrar there removes the global, the `reset_registrar` hack, and the
-listener-leak class of bugs in one move.
+listener-leak class of bugs in one move. **Fixed** in WP4: the registrar is
+hung on `entry.runtime_data`; platform setup reaches it via
+`get_registrar_for_entry(config_entry)` and the domain-global service
+handlers / websocket resolve it from `hass` through the single DOMAIN config
+entry (`get_registrar_from_hass`). The module singleton, `get_registrar()`,
+and `reset_registrar()` are deleted.
 
 ### S2. Responsibilities are smeared across `__init__.py`
 
@@ -491,7 +510,11 @@ in `async_add_entities` by closure, so "build" implicitly means
 "build + register + add to HA" — which is why a builder failure mid-service
 call leaves partial state (H7). Separating "definition store" from "entity
 factory" would make the create/update flow testable without `MagicMock`
-builders.
+builders. **Partially addressed** in WP4: string-keyed builder dispatch is
+gone (M5 — builders key on the type object). The full store/factory split
+(so "build" stops meaning "build + register + add to HA" via a closed-over
+`async_add_entities`) is deferred to the WP6 entity-lifecycle work, where it
+is cheaper to land alongside the `__init__` + `apply_config` refactor.
 
 ### S6. Data carriers duplicate `servents-data-model`, which should replace them
 

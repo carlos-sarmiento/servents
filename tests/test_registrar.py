@@ -6,13 +6,12 @@ import pytest
 
 from servents.data_model.entity_configs import BinarySensorConfig, SensorConfig
 
-from custom_components.servents import registrar as registrar_module
 from custom_components.servents.registrar import (
     ServentDefinitionRegistrar,
-    get_registrar,
-    reset_registrar,
+    get_registrar_for_entry,
+    get_registrar_from_hass,
 )
-from tests.conftest import make_definition
+from tests.conftest import make_definition, make_hass_for_registrar
 
 
 class TestRegisterDefinition:
@@ -37,8 +36,12 @@ class TestRegisterDefinition:
             registrar.register_definition(make_definition("switch", "s1"))
 
     def test_reregister_with_subclass_of_old_type_is_allowed(self, registrar):
-        # The check is isinstance(new, type(old)), not type equality:
-        # replacing a definition with a subclass instance is currently permitted.
+        # register_definition uses isinstance(new, type(old)), so replacing a
+        # definition with a subclass instance is accepted. This still holds
+        # after M5, but note the counterpart in TestBuilders: build dispatch is
+        # now exact-type, so a subclass replacement will not find the parent's
+        # builder — registration acceptance and build dispatch are separate
+        # checks and both are intentional.
         class Sub(SensorConfig):
             pass
 
@@ -99,8 +102,10 @@ class TestBuilders:
         assert registrar.get_live_entity_for_servent_id("s1") is built_entity
 
     def test_builder_dispatch_is_by_exact_type(self, registrar):
-        # Builders are keyed by str(type(definition)) — a definition whose exact
-        # type has no builder raises even if a parent type has one.
+        # M5: builders are keyed by the type OBJECT (was str(type(...))), with
+        # exact-type dispatch. A definition whose exact type has no builder
+        # raises even if a parent type has one. Registration and dispatch now
+        # use the same key (the type object) rather than a stringified type.
         registrar.register_builder_for_definition(SensorConfig, MagicMock(), MagicMock())
 
         class Sub(SensorConfig):
@@ -109,18 +114,38 @@ class TestBuilders:
         with pytest.raises(Exception, match="There is no builder registered for type"):
             registrar.build_and_register_entity(Sub(servent_id="s1", name="X"))
 
+    def test_builder_keys_are_type_objects_not_strings(self, registrar):
+        # M5: entity_builders is keyed by the type object, not str(type(...)).
+        registrar.register_builder_for_definition(SensorConfig, MagicMock(), MagicMock())
+        assert SensorConfig in registrar.entity_builders
+        assert str(SensorConfig) not in registrar.entity_builders
 
-class TestModuleSingleton:
-    def test_get_registrar_returns_singleton(self):
-        assert get_registrar() is get_registrar()
 
-    def test_reset_registrar_swaps_instance_and_marks_hass_up(self):
-        before = get_registrar()
-        before.set_hass_up(False)
-        reset_registrar()
-        after = get_registrar()
-        assert after is not before
-        assert after.is_hass_up is True
+class TestEntryAccess:
+    # S1: the registrar is per-config-entry state on entry.runtime_data, no
+    # module-level singleton. Domain-global callers resolve it from hass via
+    # the single DOMAIN config entry.
+    def test_get_registrar_for_entry_returns_runtime_data(self):
+        entry = MagicMock()
+        entry.runtime_data = ServentDefinitionRegistrar()
+        assert get_registrar_for_entry(entry) is entry.runtime_data
+
+    def test_get_registrar_for_entry_raises_when_uninitialized(self):
+        entry = MagicMock()
+        entry.runtime_data = None
+        with pytest.raises(Exception, match="no initialized registrar"):
+            get_registrar_for_entry(entry)
+
+    def test_get_registrar_from_hass_resolves_single_entry(self):
+        registrar = ServentDefinitionRegistrar()
+        hass = make_hass_for_registrar(registrar)
+        assert get_registrar_from_hass(hass) is registrar
+
+    def test_get_registrar_from_hass_raises_when_no_entry(self):
+        hass = MagicMock()
+        hass.config_entries.async_entries.side_effect = lambda _domain: []
+        with pytest.raises(Exception, match="No ServEnts config entry"):
+            get_registrar_from_hass(hass)
 
     def test_default_state_of_fresh_instance(self):
         fresh = ServentDefinitionRegistrar()
@@ -130,8 +155,18 @@ class TestModuleSingleton:
         assert fresh.is_hass_up is False
 
     def test_set_hass_up(self):
-        registrar = registrar_module.get_registrar()
+        registrar = ServentDefinitionRegistrar()
         registrar.set_hass_up(False)
         assert registrar.is_hass_up is False
         registrar.set_hass_up(True)
         assert registrar.is_hass_up is True
+
+    def test_release_hass_state_listeners_calls_and_clears(self):
+        registrar = ServentDefinitionRegistrar()
+        unsub_a = MagicMock()
+        unsub_b = MagicMock()
+        registrar.unsub_hass_state_listeners.extend([unsub_a, unsub_b])
+        registrar.release_hass_state_listeners()
+        unsub_a.assert_called_once_with()
+        unsub_b.assert_called_once_with()
+        assert registrar.unsub_hass_state_listeners == []

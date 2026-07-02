@@ -10,21 +10,30 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.servents import registrar as registrar_module
+from custom_components.servents.const import DOMAIN
 from custom_components.servents.definitions import parse_entity_config
+from custom_components.servents.registrar import ServentDefinitionRegistrar
 
 
-@pytest.fixture(autouse=True)
-def fresh_registrar():
-    """The registrar is a module-level singleton; isolate each test."""
-    registrar_module.reset_registrar()
-    yield registrar_module.get_registrar()
-    registrar_module.reset_registrar()
+def make_hass_for_registrar(registrar: ServentDefinitionRegistrar) -> MagicMock:
+    """A hass whose single ServEnts config entry carries the given registrar.
+
+    Mirrors production access: service handlers and the websocket resolve the
+    registrar via ``hass.config_entries.async_entries(DOMAIN)`` →
+    ``entry.runtime_data``.
+    """
+    entry = MagicMock()
+    entry.runtime_data = registrar
+
+    hass = MagicMock()
+    hass.config_entries.async_entries.side_effect = lambda domain: [entry] if domain == DOMAIN else []
+    return hass
 
 
 @pytest.fixture
-def registrar(fresh_registrar):
-    return fresh_registrar
+def registrar():
+    """A fresh per-entry registrar; handlers reach it via FakeServiceCall.hass."""
+    return ServentDefinitionRegistrar()
 
 
 @pytest.fixture
@@ -33,10 +42,20 @@ def mock_hass():
 
 
 class FakeServiceCall:
-    """Minimal stand-in for homeassistant.core.ServiceCall."""
+    """Minimal stand-in for homeassistant.core.ServiceCall.
 
-    def __init__(self, data: dict):
+    Handlers resolve the registrar from ``call.hass``; pass a ``registrar`` so
+    the fake wires up a matching hass, or an explicit ``hass``.
+    """
+
+    def __init__(self, data: dict, registrar: ServentDefinitionRegistrar | None = None, hass=None):
         self.data = data
+        if hass is not None:
+            self.hass = hass
+        elif registrar is not None:
+            self.hass = make_hass_for_registrar(registrar)
+        else:
+            self.hass = MagicMock()
 
 
 @pytest.fixture
