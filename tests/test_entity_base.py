@@ -110,7 +110,7 @@ class TestVerifiedScheduleUpdate:
         sensor = make_sensor()
         sensor.hass = mock_hass
         called = []
-        sensor.schedule_update_ha_state = lambda *a, **k: called.append(True)
+        sensor.schedule_update_ha_state = lambda *_args, **_kwargs: called.append(True)
         sensor.verified_schedule_update_ha_state()
         assert called == [True]
 

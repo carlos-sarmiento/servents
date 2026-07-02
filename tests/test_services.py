@@ -222,13 +222,13 @@ class TestCleanupDevices:
         removed = await self.run_cleanup([kept, stale])
         assert removed == {"stale-entry"}
 
-    async def test_stale_device_without_servent_in_identifier_value_is_not_removed(self, registrar):
+    async def test_stale_device_without_servent_in_identifier_value_is_not_removed(self):
         # Quirk: a stale servents-domain device whose identifier value does not
         # contain the substring "servent" is never selected for cleanup.
         stale = MagicMock(id="stale-entry", identifiers={("servents", "device-abc")})
         assert await self.run_cleanup([stale]) == set()
 
-    async def test_foreign_device_with_servent_in_identifier_value_is_removed(self, registrar):
+    async def test_foreign_device_with_servent_in_identifier_value_is_removed(self):
         # Quirk (flip side): a device from ANOTHER integration is selected and
         # removed if its identifier value happens to contain "servent".
         foreign = MagicMock(id="foreign-entry", identifiers={("zwave", "my-servent-node")})
