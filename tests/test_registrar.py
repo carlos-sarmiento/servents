@@ -18,7 +18,7 @@ class TestRegisterDefinition:
     def test_register_and_retrieve(self, registrar):
         definition = make_definition("sensor", "s1")
         registrar.register_definition(definition)
-        assert registrar.get_all_entities() == [definition]
+        assert registrar.get_all_definitions() == [definition]
 
     def test_reregister_same_id_same_type_replaces(self, registrar):
         first = make_definition("sensor", "s1", name="First")
@@ -26,9 +26,9 @@ class TestRegisterDefinition:
         registrar.register_definition(first)
         registrar.register_definition(second)
 
-        all_entities = registrar.get_all_entities()
-        assert len(all_entities) == 1
-        assert all_entities[0].name == "Second"
+        all_definitions = registrar.get_all_definitions()
+        assert len(all_definitions) == 1
+        assert all_definitions[0].name == "Second"
 
     def test_reregister_same_id_different_type_raises(self, registrar):
         registrar.register_definition(make_definition("sensor", "s1"))
@@ -47,27 +47,27 @@ class TestRegisterDefinition:
 
         registrar.register_definition(make_definition("sensor", "s1"))
         registrar.register_definition(Sub(servent_id="s1", name="Sub"))
-        assert type(registrar.get_all_entities()[0]) is Sub
+        assert type(registrar.get_all_definitions()[0]) is Sub
 
     def test_multiple_ids_coexist(self, registrar):
         registrar.register_definition(make_definition("sensor", "s1"))
         registrar.register_definition(make_definition("switch", "s2"))
-        assert len(registrar.get_all_entities()) == 2
+        assert len(registrar.get_all_definitions()) == 2
 
 
-class TestGetEntitiesOfType:
+class TestGetDefinitionsOfType:
     def test_filters_by_type(self, registrar):
         sensor = make_definition("sensor", "s1")
         binary = make_definition("binary_sensor", "b1")
         registrar.register_definition(sensor)
         registrar.register_definition(binary)
 
-        assert registrar.get_entities_of_type(SensorConfig) == [sensor]
-        assert registrar.get_entities_of_type(BinarySensorConfig) == [binary]
+        assert registrar.get_definitions_of_type(SensorConfig) == [sensor]
+        assert registrar.get_definitions_of_type(BinarySensorConfig) == [binary]
 
     def test_empty_when_no_match(self, registrar):
         registrar.register_definition(make_definition("sensor", "s1"))
-        assert registrar.get_entities_of_type(BinarySensorConfig) == []
+        assert registrar.get_definitions_of_type(BinarySensorConfig) == []
 
 
 class TestLiveEntities:

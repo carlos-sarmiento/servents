@@ -33,7 +33,8 @@ class ServEntSensor(ServEntEntity[SensorConfig], RestoreSensor):
 
     def _write_native_state(self, state):
         if state is not None and self._attr_device_class in [SensorDeviceClass.DATE, SensorDeviceClass.TIMESTAMP]:
-            state = datetime.fromtimestamp(int(state), timezone.utc)
+            dt = datetime.fromtimestamp(float(state), timezone.utc)
+            state = dt.date() if self._attr_device_class is SensorDeviceClass.DATE else dt
 
         self._attr_native_value = state
 

@@ -3,8 +3,7 @@ from homeassistant import config_entries
 from .const import CONF_NAME, DOMAIN
 
 
-@config_entries.HANDLERS.register(DOMAIN)
-class ServEntsFlowHandler(config_entries.ConfigFlow):
+class ServEntsFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None):

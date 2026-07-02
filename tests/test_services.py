@@ -42,7 +42,7 @@ class TestHandleCreateEntity:
             )
         )
 
-        definitions = registrar.get_all_entities()
+        definitions = registrar.get_all_definitions()
         assert len(definitions) == 1
         assert definitions[0].servent_id == "s1"
         builder.assert_called_once()
@@ -64,7 +64,7 @@ class TestHandleCreateEntity:
             )
         )
 
-        assert len(registrar.get_all_entities()) == 2
+        assert len(registrar.get_all_definitions()) == 2
         assert registrar.get_live_entity_for_servent_id("s1") is not None
         assert registrar.get_live_entity_for_servent_id("sw1") is not None
 
@@ -86,7 +86,7 @@ class TestHandleCreateEntity:
                 )
             )
 
-        assert registrar.get_all_entities() == []
+        assert registrar.get_all_definitions() == []
 
     async def test_type_conflict_is_logged_not_raised(self, registrar, caplog):
         # register_definition raising (type change for same servent_id) is
@@ -102,7 +102,7 @@ class TestHandleCreateEntity:
         )
 
         # original definition survives
-        assert isinstance(registrar.get_all_entities()[0], SensorConfig)
+        assert isinstance(registrar.get_all_definitions()[0], SensorConfig)
         assert "Cannot change the type" in caplog.text
         # H7 (constraint 2): the type-conflict path is a WARNING, not an error,
         # and the call did not raise.

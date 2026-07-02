@@ -123,7 +123,7 @@ async def handle_cleanup_devices(call: ServiceCall) -> None:
 
     device_registry = dr.async_get(hass)
 
-    definitions = registrar.get_all_entities()
+    definitions = registrar.get_all_definitions()
 
     device_ids = set([get_device_id(x.device_definition) for x in definitions if x.device_definition])
 
@@ -139,9 +139,9 @@ async def handle_cleanup_devices(call: ServiceCall) -> None:
 
 def register_and_update_all_entities(registrar: ServentDefinitionRegistrar) -> None:
     """Build entities for new definitions and reconfigure existing live ones."""
-    ents = registrar.get_all_entities()
+    definitions = registrar.get_all_definitions()
 
-    for ent_config in ents:
+    for ent_config in definitions:
         servent_id = ent_config.servent_id
 
         live_entity = registrar.get_live_entity_for_servent_id(servent_id)

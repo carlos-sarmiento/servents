@@ -1,6 +1,6 @@
 """Characterization tests for each platform's entity class."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -75,16 +75,31 @@ class TestServEntSensor:
         sensor.set_new_state_and_attributes(1, {"servent_id": "spoofed"})
         assert sensor._attr_extra_state_attributes["servent_id"] == "s1"
 
-    @pytest.mark.parametrize("device_class", ["timestamp", "date"])
-    def test_timestamp_and_date_states_convert_from_epoch(self, device_class):
-        sensor = ServEntSensor(make_definition("sensor", "s1", device_class=device_class))
+    def test_timestamp_state_converts_from_integer_epoch(self):
+        # Fixed (M4, WP8a): TIMESTAMP emits a timezone-aware datetime.
+        sensor = ServEntSensor(make_definition("sensor", "s1", device_class="timestamp"))
         sensor.set_new_state_and_attributes(1700000000, {})
         assert sensor._attr_native_value == datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
 
-    def test_timestamp_state_accepts_stringified_epoch(self):
+    def test_date_state_converts_from_epoch_to_date(self):
+        # Fixed (M4, WP8a): DATE must emit a date, not a datetime. HA serializes
+        # SensorDeviceClass.DATE with value.isoformat(); a datetime yields a full
+        # timestamp string whereas a date yields "2023-11-14" as expected.
+        sensor = ServEntSensor(make_definition("sensor", "s1", device_class="date"))
+        sensor.set_new_state_and_attributes(1700000000, {})
+        assert sensor._attr_native_value == date(2023, 11, 14)
+
+    def test_timestamp_state_accepts_stringified_integer_epoch(self):
         sensor = ServEntSensor(make_definition("sensor", "s1", device_class="timestamp"))
         sensor.set_new_state_and_attributes("1700000000", {})
         assert sensor._attr_native_value == datetime(2023, 11, 14, 22, 13, 20, tzinfo=timezone.utc)
+
+    def test_timestamp_state_accepts_float_epoch(self):
+        # Fixed (M4, WP8a): float(state) replaces int(state) so sub-second
+        # precision is preserved and float-string epochs do not raise ValueError.
+        sensor = ServEntSensor(make_definition("sensor", "s1", device_class="timestamp"))
+        sensor.set_new_state_and_attributes("1700000000.5", {})
+        assert sensor._attr_native_value == datetime.fromtimestamp(1700000000.5, tz=timezone.utc)
 
     def test_timestamp_none_state_stays_none(self):
         sensor = ServEntSensor(make_definition("sensor", "s1", device_class="timestamp"))

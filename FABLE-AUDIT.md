@@ -328,7 +328,7 @@ and `DATE` classes. For `SensorDeviceClass.DATE`, HA serializes with
 `value.isoformat()` expecting a `date`; a `datetime` yields
 `"2023-11-14T22:13:20+00:00"` as the state of a date sensor. Use
 `.date()` for the DATE branch. Also, `int(state)` rejects float-string
-epochs (`"1700000000.5"` → `ValueError`) and truncates sub-second precision.
+epochs (`"1700000000.5"` → `ValueError`) and truncates sub-second precision. **Fixed** in WP8a.
 
 ### M5. Builder dispatch by `str(type(...))` with exact-match only
 
@@ -411,7 +411,7 @@ legacy `device_config` alias is handled with a shallow copy.
 | `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                                                                                                                                                                 |
 | `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`. **Fixed** in WP5 (sync `setup` deleted; services registered via `hass.services.async_register` in `async_setup_entry`, unregistered on unload) |
 | `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict. **Fixed** in WP5 (the sync `setup` is gone; registration moved to `async_setup_entry(hass, entry)`, no mis-annotated config param)                              |
-| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)`                                                                                                                                              |
+| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)` **Fixed** in WP8a.                                                                                                                           |
 | `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL. **Fixed** in WP2 (`integration_type` + `documentation`) and WP3 (`requirements`).                                                                        |
 
 ### M11. Duplicate "HASS is up" entity on config-entry reload
@@ -448,7 +448,7 @@ its entities, so the fresh add carries no duplicate unique_id.
   *definitions*, not entities; `live_entity = ...get_all_entities()`
   (`__init__.py:92`) is definitions too. The definition/live-entity
   distinction is the core of the design and the names actively fight it.
-  Also `servent_current_config` names the registrar.
+  Also `servent_current_config` names the registrar. **Fixed** in WP8a.
 - **L6. `device_info` property mutates state.** `entity.py:62-65` coerces a
   raw dict `device_definition` into a dataclass *inside a property getter*.
   Dicts don't just "legitimately end up there" — they always do with

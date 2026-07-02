@@ -77,7 +77,7 @@ class TestDomovoyCreateEntity:
         # Since WP3 they are real fields on the shared model (parsed, not
         # dropped), but they still must not leak into published attributes.
         entity = await self.create(registrar)
-        definition = registrar.get_all_entities()[0]
+        definition = registrar.get_all_definitions()[0]
         assert definition.app_name == "my_app"
         assert definition.device_definition.is_global is False
         assert "app_name" not in entity._attr_extra_state_attributes
@@ -88,7 +88,7 @@ class TestDomovoyCreateEntity:
         # device_definition dict into DeviceConfig natively at parse time —
         # no eager-coercion stopgap, no lazy getter.
         await self.create(registrar)
-        definition = registrar.get_all_entities()[0]
+        definition = registrar.get_all_definitions()[0]
         assert isinstance(definition.device_definition, DeviceConfig)
 
     def test_device_info_property_returns_frozen_identifier(self):
@@ -106,7 +106,7 @@ class TestDomovoyCreateEntity:
         from custom_components.servents.services import handle_cleanup_devices
 
         await self.create(registrar)
-        assert isinstance(registrar.get_all_entities()[0].device_definition, DeviceConfig)
+        assert isinstance(registrar.get_all_definitions()[0].device_definition, DeviceConfig)
 
         device_registry = MagicMock()
         device_registry.devices.values.return_value = []

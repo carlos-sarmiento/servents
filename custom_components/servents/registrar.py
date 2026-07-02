@@ -53,10 +53,10 @@ class ServentDefinitionRegistrar:
 
         self.entity_definitions[entity.servent_id] = entity
 
-    def get_entities_of_type(self, entity_type: type[T]) -> list[T]:
+    def get_definitions_of_type(self, entity_type: type[T]) -> list[T]:
         return [x for x in self.entity_definitions.values() if isinstance(x, entity_type)]
 
-    def get_all_entities(self) -> list[EntityConfig]:
+    def get_all_definitions(self) -> list[EntityConfig]:
         return [x for x in self.entity_definitions.values()]
 
     def get_live_entity_for_servent_id(self, servent_id: str) -> ServEntEntity | None:
