@@ -1,8 +1,11 @@
 """Characterization tests for the service handlers in __init__.py."""
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
+import voluptuous as vol
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from servents.data_model.entity_configs import SensorConfig, SwitchConfig
 
@@ -11,6 +14,7 @@ from custom_components.servents import (
     handle_update_entity,
     register_and_update_all_entities,
 )
+from custom_components.servents.services import handle_cleanup_devices
 from tests.conftest import FakeServiceCall, make_definition
 
 
@@ -100,6 +104,12 @@ class TestHandleCreateEntity:
         # original definition survives
         assert isinstance(registrar.get_all_entities()[0], SensorConfig)
         assert "Cannot change the type" in caplog.text
+        # H7 (constraint 2): the type-conflict path is a WARNING, not an error,
+        # and the call did not raise.
+        assert any(
+            r.levelno == logging.WARNING and "Cannot change the type" in r.getMessage()
+            for r in caplog.records
+        )
 
     async def test_recreating_existing_entity_updates_live_entity(self, registrar):
         builder = register_builder(registrar, SensorConfig)
@@ -147,6 +157,95 @@ class TestHandleUpdateEntity:
         live.set_new_state_and_attributes.assert_called_once_with("on", {})
 
 
+class TestErrorSemantics:
+    """H7: each failure path maps to the correct HA exception type."""
+
+    async def test_empty_entities_raises_service_validation_error(self, registrar):
+        # Paths Domovoy never hits raise ServiceValidationError so HA can
+        # present them in the UI.
+        with pytest.raises(ServiceValidationError, match="Call does not define any entities"):
+            await handle_create_entity(FakeServiceCall({"entities": []}, registrar))
+
+    async def test_unknown_entity_type_raises_service_validation_error(self, registrar):
+        with pytest.raises(ServiceValidationError, match="is not supported"):
+            await handle_create_entity(
+                FakeServiceCall(
+                    {"entities": [{"entity_type": "bogus", "servent_id": "s1", "name": "S1"}]},
+                    registrar,
+                )
+            )
+
+    async def test_builder_failure_raises_home_assistant_error(self, registrar):
+        # No builder is registered for SensorConfig; build_and_register_entity
+        # raises a bare Exception which must surface as HomeAssistantError, not
+        # be swallowed like the type-conflict path.
+        with pytest.raises(HomeAssistantError, match="Failed to build or update entity 's1'"):
+            await handle_create_entity(
+                FakeServiceCall(
+                    {"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]},
+                    registrar,
+                )
+            )
+
+    async def test_service_validation_error_is_a_home_assistant_error(self):
+        # ServiceValidationError subclasses HomeAssistantError; the builder path
+        # must not catch-and-rewrap ServiceValidationError raised by build.
+        assert issubclass(ServiceValidationError, HomeAssistantError)
+
+
+class TestServiceSchemas:
+    """M8: top-level vol.Schema envelopes that must not reject Domovoy payloads."""
+
+    def test_create_entity_schema_accepts_domovoy_entities_list(self):
+        from custom_components.servents.services import CREATE_ENTITY_SCHEMA
+
+        # Inner entity dicts (with device_definition/app_name/is_global) pass
+        # through untouched — inner validation is serde's job.
+        payload = {
+            "entities": [
+                {
+                    "entity_type": "sensor",
+                    "servent_id": "s1",
+                    "name": "S1",
+                    "device_definition": {"device_id": "d1", "name": "Dev", "is_global": False},
+                    "app_name": "my_app",
+                }
+            ]
+        }
+        assert CREATE_ENTITY_SCHEMA(payload) == payload
+
+    def test_create_entity_schema_rejects_empty_list(self):
+        from custom_components.servents.services import CREATE_ENTITY_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            CREATE_ENTITY_SCHEMA({"entities": []})
+
+    def test_create_entity_schema_rejects_missing_entities(self):
+        from custom_components.servents.services import CREATE_ENTITY_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            CREATE_ENTITY_SCHEMA({})
+
+    def test_update_state_schema_accepts_domovoy_payload(self):
+        from custom_components.servents.services import UPDATE_STATE_SCHEMA
+
+        payload = {"servent_id": "s1", "state": 21.5, "attributes": {}}
+        assert UPDATE_STATE_SCHEMA(payload) == payload
+
+    def test_update_state_schema_requires_servent_id(self):
+        from custom_components.servents.services import UPDATE_STATE_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            UPDATE_STATE_SCHEMA({"state": 1})
+
+    def test_update_state_schema_allows_extra_keys(self):
+        from custom_components.servents.services import UPDATE_STATE_SCHEMA
+
+        # Constraint 8: extra keys must pass, never be rejected.
+        result = UPDATE_STATE_SCHEMA({"servent_id": "s1", "state": "on", "junk": True})
+        assert result["junk"] is True
+
+
 class TestRegisterAndUpdateAllEntities:
     def test_builds_missing_and_updates_existing(self, registrar):
         builder = register_builder(registrar, SensorConfig)
@@ -170,13 +269,13 @@ class TestRegisterAndUpdateAllEntities:
 
 
 class TestSetup:
-    def test_setup_registers_three_services(self):
-        from custom_components.servents import setup
+    def test_register_services_registers_three_services(self):
+        from custom_components.servents.services import async_register_services
 
         hass = MagicMock()
-        assert setup(hass, MagicMock()) is True
+        async_register_services(hass)
 
-        registered = {call.args[:2] for call in hass.services.register.call_args_list}
+        registered = {call.args[:2] for call in hass.services.async_register.call_args_list}
         assert registered == {
             ("servents", "create_entity"),
             ("servents", "update_state"),
@@ -187,15 +286,8 @@ class TestSetup:
 class TestCleanupDevices:
     @staticmethod
     def get_cleanup_handler():
-        from custom_components.servents import setup
-
-        hass = MagicMock()
-        setup(hass, MagicMock())
-        return next(
-            call.args[2]
-            for call in hass.services.register.call_args_list
-            if call.args[1] == "cleanup_devices"
-        )
+        # The cleanup handler is now a module-level function in services.py.
+        return handle_cleanup_devices
 
     async def run_cleanup(self, devices, registrar=None):
         from custom_components.servents.registrar import ServentDefinitionRegistrar
@@ -204,7 +296,7 @@ class TestCleanupDevices:
         device_registry = MagicMock()
         device_registry.devices.values.return_value = devices
 
-        with patch("custom_components.servents.dr.async_get", return_value=device_registry):
+        with patch("custom_components.servents.services.dr.async_get", return_value=device_registry):
             await cleanup(FakeServiceCall({}, registrar or ServentDefinitionRegistrar()))
 
         return {call.args[0] for call in device_registry.async_remove_device.call_args_list}

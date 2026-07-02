@@ -218,7 +218,7 @@ Domovoy constraint (item 2 above): path 2 — the type-conflict swallow — is
 load-bearing. Domovoy does not guard its `create_entity` calls, so this path
 must stay non-fatal; improve it to a structured warning, don't promote it to
 an error. Raising proper error types is only safe on paths Domovoy cannot
-trigger (missing/empty `entities`, malformed definitions).
+trigger (missing/empty `entities`, malformed definitions). **Fixed** in WP5.
 
 ### H8. The production wire format bypasses device coercion; `cleanup_devices` crashes on it
 
@@ -357,7 +357,11 @@ keys are still silently ignored — same lenience as today — and a top-level
 `vol.Schema` (entities is a non-empty list of dicts; update_state has
 servent_id/state) is still worth adding for UI-friendly errors. **Fixed**
 (field-validation half) in WP3: parse errors surface as
-`ServiceValidationError`. The top-level `vol.Schema` half remains for WP5.
+`ServiceValidationError`. The top-level `vol.Schema` half is **Fixed** in
+WP5 (per-service envelope schemas registered with `async_register`; the
+`entities` list and `servent_id` are validated at the top level while inner
+entity dicts pass through untouched for serde to validate, so no Domovoy
+payload is rejected).
 
 ### M9. `to_dataclass` mutates the caller's service-call data
 
@@ -372,13 +376,13 @@ legacy `device_config` alias is handled with a shallow copy.
 
 ### M10. Legacy / deprecated API usage
 
-| Location             | Issue                                                                                                                                                                               |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                                                                                          |
-| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`                                                                          |
-| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict                                                                                           |
-| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)`                                                                       |
-| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL. **Fixed** in WP2 (`integration_type` + `documentation`) and WP3 (`requirements`). |
+| Location             | Issue                                                                                                                                                                                                                                                      |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                                                                                                                                                                 |
+| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`. **Fixed** in WP5 (sync `setup` deleted; services registered via `hass.services.async_register` in `async_setup_entry`, unregistered on unload) |
+| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict. **Fixed** in WP5 (the sync `setup` is gone; registration moved to `async_setup_entry(hass, entry)`, no mis-annotated config param)                              |
+| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)`                                                                                                                                              |
+| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL. **Fixed** in WP2 (`integration_type` + `documentation`) and WP3 (`requirements`).                                                                        |
 
 ### M11. Duplicate "HASS is up" entity on config-entry reload
 
@@ -436,8 +440,13 @@ its entities, so the fresh add carries no duplicate unique_id.
   command / event listeners from `async_setup_entry` are re-registered on
   each reload (related to M7/M11). **Listener half fixed** in WP4: the
   STARTED/STOP listeners now hold unsubscribe handles on the registrar,
-  released in `async_unload_entry`. The service-unregister half remains for
-  WP5.
+  released in `async_unload_entry`. **Service + websocket half Fixed** in
+  WP5: the three services are removed with `hass.services.async_remove` and
+  the `servent/hass-state` websocket command is popped from
+  `hass.data[websocket_api.DOMAIN]` on unload (websocket_api exposes no
+  public unregister API, so the handler dict entry is removed directly);
+  both are registered in `async_setup_entry` so registration and teardown
+  pair.
 - **L10. `hass.bus.async_fire("servent.core_reloaded")`** fires on *every*
   setup, including first install — the name overpromises.
 - **L11. `inspect.signature` on every build** (`data_carriers.py:143`) —
@@ -478,7 +487,11 @@ cleanup logic, and the create-or-update reconciliation loop
 siblings are module-level — for no reason other than needing `hass`, which
 `ServiceCall.hass` already provides. A `services.py` module (per HA
 convention) with all three handlers, plus schemas (M8), would make the entry
-point readable.
+point readable. **Fixed** in WP5: all three handlers (create/update/cleanup)
+and the `register_and_update_all_entities` reconciliation loop moved to
+`services.py`; each reaches the registrar via `ServiceCall.hass`, no
+closures. `__init__.py` now holds only the config-entry lifecycle, the
+websocket command, and registration wiring.
 
 ### S3. The entity base class is split and sequenced confusingly
 

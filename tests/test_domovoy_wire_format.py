@@ -103,23 +103,15 @@ class TestDomovoyCreateEntity:
         # Fixed (FABLE-AUDIT H8, WP3): device_definition is a DeviceConfig from
         # parse time, so cleanup_devices works even when device_info was never
         # read (the original crash path for the Domovoy restart flow).
-        from custom_components.servents import setup
+        from custom_components.servents.services import handle_cleanup_devices
 
         await self.create(registrar)
         assert isinstance(registrar.get_all_entities()[0].device_definition, DeviceConfig)
 
-        hass = MagicMock()
-        setup(hass, MagicMock())
-        cleanup = next(
-            call.args[2]
-            for call in hass.services.register.call_args_list
-            if call.args[1] == "cleanup_devices"
-        )
-
         device_registry = MagicMock()
         device_registry.devices.values.return_value = []
-        with patch("custom_components.servents.dr.async_get", return_value=device_registry):
-            await cleanup(FakeServiceCall({}, registrar))
+        with patch("custom_components.servents.services.dr.async_get", return_value=device_registry):
+            await handle_cleanup_devices(FakeServiceCall({}, registrar))
 
     async def test_recreate_from_domovoy_app_restart_updates_in_place(self, registrar):
         # Domovoy re-sends create_entity for every entity on app restart.

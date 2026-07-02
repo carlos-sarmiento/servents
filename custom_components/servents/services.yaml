@@ -5,9 +5,11 @@ create_entity:
   description: Creates a ServEnt entity.
   fields:
     entities:
-      description: "The entities to create"
-      example: sensor
+      description: "The entities to create (a non-empty list of entity definitions)."
+      example: "[{entity_type: sensor, servent_id: my-sensor, name: My Sensor}]"
       required: true
+      selector:
+        object:
 
 
 update_state:
@@ -18,15 +20,21 @@ update_state:
       description: The ID to uniquely identify this servent Entity.
       example: "kitchen-switch-virtual-for-something"
       required: true
+      selector:
+        text:
     state:
       description: The state of the entity
       example: SomeValue
       required: true
+      selector:
+        text:
     attributes:
       description: Dictionary of additional attributes
       example:
         bleh: data
       required: true
+      selector:
+        object:
 
 cleanup_devices:
   name: Cleanup Devices
