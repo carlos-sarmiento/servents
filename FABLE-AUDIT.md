@@ -170,7 +170,7 @@ unused), and merge current `fixed_attributes` last.
   in the dev venv transitively via `astral`), so on a user install this can
   raise `ImportError` and take the whole integration down. The idiomatic fix
   removes the dependency entirely: `homeassistant.util.dt.utc_from_timestamp`
-  or `datetime.timezone.utc`.
+  or `datetime.timezone.utc`. **Fixed** in WP2.
 - `pyproject.toml:8` declares `servents-data-model>=0.6.0` as the sole
   runtime dependency, but nothing in the codebase imports it yet. It is the
   intended replacement for `data_carriers.py` (see the adoption section
@@ -356,13 +356,13 @@ service payload is a side effect waiting to become a bug.
 
 ### M10. Legacy / deprecated API usage
 
-| Location             | Issue                                                                                                         |
-| -------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                    |
-| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`    |
-| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict                     |
-| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)` |
-| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL              |
+| Location             | Issue                                                                                                                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                                                                                               |
+| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`                                                                               |
+| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict                                                                                                |
+| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)`                                                                            |
+| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL. **Fixed** in WP2 (`integration_type` + `documentation`; `requirements` lands in WP3). |
 
 ### M11. Duplicate "HASS is up" entity on config-entry reload
 
@@ -380,7 +380,7 @@ in the state machine.
   Unlimited services"; `websocket_hass_is_up`'s docstring is "Handle
   search." (`__init__.py:44`).
 - **L2. Version mismatch.** `manifest.json` says `0.1.0`; `pyproject.toml`
-  says `0.6.0`.
+  says `0.6.0`. **Fixed** in WP2.
 - **L3. Dead code.** `ServentExtraData` (`entity.py:72-78`) is never used
   outside its own test; `_LOGGER` in `data_carriers.py:114` is never used;
   `self._attr_device_info = None` (`entity.py:45`) is dead because the

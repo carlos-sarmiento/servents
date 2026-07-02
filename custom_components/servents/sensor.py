@@ -1,6 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
-import pytz
 from homeassistant.components.sensor import RestoreSensor
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
@@ -39,7 +38,7 @@ class ServEntSensor(ServEntEntity[ServentSensorDefinition], RestoreSensor):
 
     def set_new_state_and_attributes(self, state, attributes):
         if state is not None and self._attr_device_class in [SensorDeviceClass.DATE, SensorDeviceClass.TIMESTAMP]:
-            state = datetime.fromtimestamp(int(state), pytz.utc)
+            state = datetime.fromtimestamp(int(state), timezone.utc)
 
         self._attr_native_value = state
         if attributes is None:
