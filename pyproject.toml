@@ -8,13 +8,18 @@ readme = "README.md"
 dependencies = ["servents-data-model>=0.6.0"]
 
 [dependency-groups]
-dev = ["homeassistant>=2025.11.0"]
+dev = ["homeassistant>=2025.11.0", "pytest>=8.0", "pytest-asyncio>=0.24"]
 
 [tool.ruff]
 line-length = 120
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "W", "ARG"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [build-system]
 requires = ["hatchling"]
