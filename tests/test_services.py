@@ -4,14 +4,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from servents.data_model.entity_configs import SensorConfig, SwitchConfig
+
 from custom_components.servents import (
     handle_create_entity,
     handle_update_entity,
     register_and_update_all_entities,
-)
-from custom_components.servents.data_carriers import (
-    ServentSensorDefinition,
-    ServentSwitchDefinition,
 )
 from tests.conftest import FakeServiceCall, make_definition
 
@@ -32,7 +30,7 @@ class TestHandleCreateEntity:
             await handle_create_entity(FakeServiceCall({"entities": []}))
 
     async def test_creates_definition_and_builds_entity(self, registrar):
-        builder = register_builder(registrar, ServentSensorDefinition)
+        builder = register_builder(registrar, SensorConfig)
 
         await handle_create_entity(
             FakeServiceCall(
@@ -47,8 +45,8 @@ class TestHandleCreateEntity:
         assert registrar.get_live_entity_for_servent_id("s1") is not None
 
     async def test_creates_multiple_entities_in_one_call(self, registrar):
-        register_builder(registrar, ServentSensorDefinition)
-        register_builder(registrar, ServentSwitchDefinition)
+        register_builder(registrar, SensorConfig)
+        register_builder(registrar, SwitchConfig)
 
         await handle_create_entity(
             FakeServiceCall(
@@ -66,9 +64,9 @@ class TestHandleCreateEntity:
         assert registrar.get_live_entity_for_servent_id("sw1") is not None
 
     async def test_invalid_definition_in_list_raises_before_any_registration(self, registrar):
-        # to_dataclass runs on the entire list before registration, so one bad
-        # definition aborts the whole call.
-        register_builder(registrar, ServentSensorDefinition)
+        # parse_entity_config runs on the entire list before registration, so
+        # one bad definition aborts the whole call.
+        register_builder(registrar, SensorConfig)
 
         with pytest.raises(Exception, match="is not supported"):
             await handle_create_entity(
@@ -87,8 +85,8 @@ class TestHandleCreateEntity:
     async def test_type_conflict_is_logged_not_raised(self, registrar, caplog):
         # register_definition raising (type change for same servent_id) is
         # caught and logged; the service call still completes.
-        register_builder(registrar, ServentSensorDefinition)
-        register_builder(registrar, ServentSwitchDefinition)
+        register_builder(registrar, SensorConfig)
+        register_builder(registrar, SwitchConfig)
 
         await handle_create_entity(
             FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]})
@@ -98,11 +96,11 @@ class TestHandleCreateEntity:
         )
 
         # original definition survives
-        assert isinstance(registrar.get_all_entities()[0], ServentSensorDefinition)
+        assert isinstance(registrar.get_all_entities()[0], SensorConfig)
         assert "Cannot change the type" in caplog.text
 
     async def test_recreating_existing_entity_updates_live_entity(self, registrar):
-        builder = register_builder(registrar, ServentSensorDefinition)
+        builder = register_builder(registrar, SensorConfig)
 
         await handle_create_entity(
             FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "First"}]})
@@ -149,7 +147,7 @@ class TestHandleUpdateEntity:
 
 class TestRegisterAndUpdateAllEntities:
     def test_builds_missing_and_updates_existing(self, registrar):
-        builder = register_builder(registrar, ServentSensorDefinition)
+        builder = register_builder(registrar, SensorConfig)
 
         existing_live = MagicMock()
         registrar.register_live_entity("existing", existing_live)

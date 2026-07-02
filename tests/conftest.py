@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from custom_components.servents import registrar as registrar_module
-from custom_components.servents.data_carriers import to_dataclass
+from custom_components.servents.definitions import parse_entity_config
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +45,7 @@ def make_service_call():
 
 
 def make_definition(entity_type: str = "sensor", servent_id: str = "test-id", name: str = "Test", **extra):
-    return to_dataclass({"entity_type": entity_type, "servent_id": servent_id, "name": name, **extra})
+    return parse_entity_config({"entity_type": entity_type, "servent_id": servent_id, "name": name, **extra})
 
 
 @pytest.fixture

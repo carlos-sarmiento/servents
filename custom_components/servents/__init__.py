@@ -16,7 +16,7 @@ from custom_components.servents.registrar import get_registrar, reset_registrar
 from .const import (
     DOMAIN,
 )
-from .data_carriers import ServentUpdateEntityDefinition, clean_params_and_build, to_dataclass
+from .definitions import get_device_id, parse_entity_config, parse_update_entity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,13 +47,12 @@ def websocket_hass_is_up(
 
 async def handle_create_entity(call: ServiceCall) -> None:
     """Handle the service call."""
-    data = call.data.copy()
-    entities_list = data.get("entities", [])
+    entities_list = call.data.get("entities", [])
 
     if not entities_list:
         raise Exception("Call does not define any entities")
 
-    entities = [to_dataclass(x) for x in entities_list]
+    entities = [parse_entity_config(x) for x in entities_list]
 
     for definition in entities:
         try:
@@ -67,7 +66,7 @@ async def handle_create_entity(call: ServiceCall) -> None:
 async def handle_update_entity(call: ServiceCall) -> None:
     """Handle the service call."""
 
-    data = clean_params_and_build(ServentUpdateEntityDefinition, call.data)
+    data = parse_update_entity(call.data)
 
     live_entity = get_registrar().get_live_entity_for_servent_id(data.servent_id)
 
@@ -91,7 +90,7 @@ def setup(hass: HomeAssistant, _entry: ConfigEntry):
 
         live_entity = get_registrar().get_all_entities()
 
-        device_ids = set([x.device_definition.get_device_id() for x in live_entity if x.device_definition])
+        device_ids = set([get_device_id(x.device_definition) for x in live_entity if x.device_definition])
 
         devices = [d for d in device_registry.devices.values() if any([a[0] == DOMAIN for a in d.identifiers])]
 

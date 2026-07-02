@@ -4,11 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from servents.data_model.entity_configs import BinarySensorConfig, SensorConfig
+
 from custom_components.servents import registrar as registrar_module
-from custom_components.servents.data_carriers import (
-    ServentBinarySensorDefinition,
-    ServentSensorDefinition,
-)
 from custom_components.servents.registrar import (
     ServentDefinitionRegistrar,
     get_registrar,
@@ -41,11 +39,11 @@ class TestRegisterDefinition:
     def test_reregister_with_subclass_of_old_type_is_allowed(self, registrar):
         # The check is isinstance(new, type(old)), not type equality:
         # replacing a definition with a subclass instance is currently permitted.
-        class Sub(ServentSensorDefinition):
+        class Sub(SensorConfig):
             pass
 
         registrar.register_definition(make_definition("sensor", "s1"))
-        registrar.register_definition(Sub(entity_type="sensor", servent_id="s1", name="Sub"))
+        registrar.register_definition(Sub(servent_id="s1", name="Sub"))
         assert type(registrar.get_all_entities()[0]) is Sub
 
     def test_multiple_ids_coexist(self, registrar):
@@ -61,12 +59,12 @@ class TestGetEntitiesOfType:
         registrar.register_definition(sensor)
         registrar.register_definition(binary)
 
-        assert registrar.get_entities_of_type(ServentSensorDefinition) == [sensor]
-        assert registrar.get_entities_of_type(ServentBinarySensorDefinition) == [binary]
+        assert registrar.get_entities_of_type(SensorConfig) == [sensor]
+        assert registrar.get_entities_of_type(BinarySensorConfig) == [binary]
 
     def test_empty_when_no_match(self, registrar):
         registrar.register_definition(make_definition("sensor", "s1"))
-        assert registrar.get_entities_of_type(ServentBinarySensorDefinition) == []
+        assert registrar.get_entities_of_type(BinarySensorConfig) == []
 
 
 class TestLiveEntities:
@@ -90,7 +88,7 @@ class TestBuilders:
         builder = MagicMock(return_value=built_entity)
         async_add_entities = MagicMock()
 
-        registrar.register_builder_for_definition(ServentSensorDefinition, builder, async_add_entities)
+        registrar.register_builder_for_definition(SensorConfig, builder, async_add_entities)
 
         definition = make_definition("sensor", "s1")
         result = registrar.build_and_register_entity(definition)
@@ -103,13 +101,13 @@ class TestBuilders:
     def test_builder_dispatch_is_by_exact_type(self, registrar):
         # Builders are keyed by str(type(definition)) — a definition whose exact
         # type has no builder raises even if a parent type has one.
-        registrar.register_builder_for_definition(ServentSensorDefinition, MagicMock(), MagicMock())
+        registrar.register_builder_for_definition(SensorConfig, MagicMock(), MagicMock())
 
-        class Sub(ServentSensorDefinition):
+        class Sub(SensorConfig):
             pass
 
         with pytest.raises(Exception, match="There is no builder registered for type"):
-            registrar.build_and_register_entity(Sub(entity_type="sensor", servent_id="s1", name="X"))
+            registrar.build_and_register_entity(Sub(servent_id="s1", name="X"))
 
 
 class TestModuleSingleton:

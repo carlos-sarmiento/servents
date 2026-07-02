@@ -11,8 +11,8 @@ strip_none_and_enums_from_containers) against servents-data-model 0.6.0.
 Notable properties of the format:
 
 - The nested device payload is sent under ``device_definition`` (the
-  dataclass field name), NOT the ``device_config`` key that services.yaml
-  documents and to_dataclass coerces eagerly.
+  dataclass field name), NOT the legacy ``device_config`` key that
+  services.yaml documents.
 - ``app_name`` (entity and device) and ``is_global`` (device) are present.
   The integration ignores them; that is the decided behavior for now.
 - All None-valued keys are stripped client-side.
@@ -20,12 +20,10 @@ Notable properties of the format:
 
 from unittest.mock import MagicMock, patch
 
+from servents.data_model.entity_configs import DeviceConfig, SensorConfig
+
 from custom_components.servents import handle_create_entity, handle_update_entity
-from custom_components.servents.data_carriers import (
-    ServentDeviceDefinition,
-    ServentSensorDefinition,
-    to_dataclass,
-)
+from custom_components.servents.definitions import parse_entity_config
 from custom_components.servents.sensor import ServEntSensor
 from tests.conftest import FakeServiceCall
 
@@ -57,7 +55,7 @@ def domovoy_sensor_payload() -> dict:
 class TestDomovoyCreateEntity:
     async def create(self, registrar, payload=None):
         registrar.register_builder_for_definition(
-            ServentSensorDefinition, lambda d: ServEntSensor(d), MagicMock()
+            SensorConfig, lambda d: ServEntSensor(d), MagicMock()
         )
         await handle_create_entity(FakeServiceCall({"entities": [payload or domovoy_sensor_payload()]}))
         return registrar.get_live_entity_for_servent_id("my_app-temperature")
@@ -74,38 +72,39 @@ class TestDomovoyCreateEntity:
     async def test_app_name_and_is_global_are_silently_ignored(self, registrar):
         # Decided behavior (2026-07): the integration accepts and ignores
         # these Domovoy-only fields. They must never cause a rejection.
+        # Since WP3 they are real fields on the shared model (parsed, not
+        # dropped), but they still must not leak into published attributes.
         entity = await self.create(registrar)
         definition = registrar.get_all_entities()[0]
-        assert not hasattr(definition, "app_name")
-        assert not hasattr(definition, "is_global")
+        assert definition.app_name == "my_app"
+        assert definition.device_definition.is_global is False
         assert "app_name" not in entity._attr_extra_state_attributes
+        assert "is_global" not in entity._attr_extra_state_attributes
 
-    async def test_device_definition_dict_is_not_coerced_eagerly(self, registrar):
-        # Fixed (FABLE-AUDIT H8 stopgap): to_dataclass now coerces a dict
-        # device_definition into ServentDeviceDefinition eagerly, exactly as
-        # device_config was already coerced. WP3 will delete this stopgap
-        # when serde.from_dict handles it natively.
+    async def test_device_definition_deserializes_to_device_config(self, registrar):
+        # Fixed (FABLE-AUDIT H8, WP3): serde.from_dict deserializes the nested
+        # device_definition dict into DeviceConfig natively at parse time —
+        # no eager-coercion stopgap, no lazy getter.
         await self.create(registrar)
         definition = registrar.get_all_entities()[0]
-        assert isinstance(definition.device_definition, ServentDeviceDefinition)
+        assert isinstance(definition.device_definition, DeviceConfig)
 
-    def test_device_info_property_coerces_lazily(self):
-        # The dict is converted only when HA reads the device_info property.
+    def test_device_info_property_returns_frozen_identifier(self):
         # The device- identifier prefix is frozen wire format for Domovoy.
-        entity = ServEntSensor(to_dataclass(domovoy_sensor_payload()))
+        entity = ServEntSensor(parse_entity_config(domovoy_sensor_payload()))
         info = entity.device_info
         assert info["identifiers"] == {("servents", "device-my_app")}
         assert info["name"] == "My App"
-        assert isinstance(entity.servent_config.device_definition, ServentDeviceDefinition)
+        assert isinstance(entity.servent_config.device_definition, DeviceConfig)
 
-    async def test_cleanup_devices_crashes_on_uncoerced_device_definition(self, registrar):
-        # Fixed (FABLE-AUDIT H8 stopgap): to_dataclass now coerces device_definition
-        # dicts eagerly, so cleanup_devices can call .get_device_id() safely even
-        # when device_info was never read. WP3 will supersede this stopgap.
+    async def test_cleanup_devices_succeeds_on_domovoy_payload(self, registrar):
+        # Fixed (FABLE-AUDIT H8, WP3): device_definition is a DeviceConfig from
+        # parse time, so cleanup_devices works even when device_info was never
+        # read (the original crash path for the Domovoy restart flow).
         from custom_components.servents import setup
 
         await self.create(registrar)
-        assert isinstance(registrar.get_all_entities()[0].device_definition, ServentDeviceDefinition)
+        assert isinstance(registrar.get_all_entities()[0].device_definition, DeviceConfig)
 
         hass = MagicMock()
         setup(hass, MagicMock())
@@ -147,16 +146,17 @@ class TestDomovoyUpdateState:
     async def test_update_state_on_button_is_accepted_as_noop(self, registrar):
         # Constraint 3: Domovoy exposes set_to on buttons; the call must keep
         # succeeding. Currently it is a silent no-op via the base-class hook.
+        from servents.data_model.entity_configs import ButtonConfig
+
         from custom_components.servents.button import ServEntButton
-        from custom_components.servents.data_carriers import ServentButtonDefinition
 
         button = ServEntButton(
-            to_dataclass(
+            parse_entity_config(
                 {"entity_type": "button", "servent_id": "b1", "name": "B", "event": "pressed"}
             ),
             MagicMock(),
         )
-        assert isinstance(button.servent_config, ServentButtonDefinition)
+        assert isinstance(button.servent_config, ButtonConfig)
         registrar.register_live_entity("b1", button)
 
         await handle_update_entity(

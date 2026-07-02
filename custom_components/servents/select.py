@@ -4,7 +4,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .data_carriers import ServentSelectDefinition
+from servents.data_model.entity_configs import SelectConfig
+
 from .entity import ServEntEntity
 from .registrar import get_registrar
 
@@ -16,14 +17,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensor platform."""
     get_registrar().register_builder_for_definition(
-        ServentSelectDefinition,
+        SelectConfig,
         lambda x: ServEntSelect(x),
         async_add_entities,
     )
 
 
-class ServEntSelect(ServEntEntity[ServentSelectDefinition], SelectEntity, RestoreEntity):
-    def __init__(self, config: ServentSelectDefinition) -> None:
+class ServEntSelect(ServEntEntity[SelectConfig], SelectEntity, RestoreEntity):
+    def __init__(self, config: SelectConfig) -> None:
         self.servent_configure(config)
 
     def update_specific_entity_config(self) -> None:

@@ -6,7 +6,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .data_carriers import ServentSensorDefinition
+from servents.data_model.entity_configs import SensorConfig
+
 from .entity import ServEntEntity
 from .registrar import get_registrar
 
@@ -17,13 +18,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar().register_builder_for_definition(
-        ServentSensorDefinition, lambda x: ServEntSensor(x), async_add_entities
-    )
+    get_registrar().register_builder_for_definition(SensorConfig, lambda x: ServEntSensor(x), async_add_entities)
 
 
-class ServEntSensor(ServEntEntity[ServentSensorDefinition], RestoreSensor):
-    def __init__(self, config: ServentSensorDefinition):
+class ServEntSensor(ServEntEntity[SensorConfig], RestoreSensor):
+    def __init__(self, config: SensorConfig):
         self.servent_configure(config)
 
     def update_specific_entity_config(self):

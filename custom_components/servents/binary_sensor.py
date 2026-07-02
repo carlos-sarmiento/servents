@@ -9,11 +9,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .data_carriers import (
-    ServentBinarySensorDefinition,
-    ServentDeviceDefinition,
-    ServentThresholdBinarySensorDefinition,
+from servents.data_model.entity_configs import (
+    BinarySensorConfig,
+    DeviceConfig,
+    ThresholdBinarySensorConfig,
 )
+
+from .definitions import get_device_info
 from .entity import ServEntEntity
 from .registrar import get_registrar
 
@@ -26,10 +28,10 @@ async def async_setup_entry(
     configure_homeassistant_up_sensor(hass, async_add_entities)
 
     get_registrar().register_builder_for_definition(
-        ServentBinarySensorDefinition, lambda x: ServEntBinarySensor(x), async_add_entities
+        BinarySensorConfig, lambda x: ServEntBinarySensor(x), async_add_entities
     )
     get_registrar().register_builder_for_definition(
-        ServentThresholdBinarySensorDefinition, lambda x: ServEntThresholdBinarySensor(hass, x), async_add_entities
+        ThresholdBinarySensorConfig, lambda x: ServEntThresholdBinarySensor(hass, x), async_add_entities
     )
 
 
@@ -54,11 +56,13 @@ class ServEntHassIsReady(BinarySensorEntity):
         self._attr_is_on = False
         self._attr_extra_state_attributes = {"servent_flag": "servent-hass-is-up"}
 
-        self._attr_device_info = ServentDeviceDefinition(
-            device_id="servent_core_device",
-            name="Servents Core",
-            manufacturer="Servents",
-        ).get_device_info()
+        self._attr_device_info = get_device_info(
+            DeviceConfig(
+                device_id="servent_core_device",
+                name="Servents Core",
+                manufacturer="Servents",
+            )
+        )
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def set_state(self, state: bool):
@@ -67,8 +71,8 @@ class ServEntHassIsReady(BinarySensorEntity):
         self.schedule_update_ha_state()
 
 
-class ServEntBinarySensor(ServEntEntity[ServentBinarySensorDefinition], BinarySensorEntity, RestoreEntity):
-    def __init__(self, config: ServentBinarySensorDefinition):
+class ServEntBinarySensor(ServEntEntity[BinarySensorConfig], BinarySensorEntity, RestoreEntity):
+    def __init__(self, config: BinarySensorConfig):
         self.servent_configure(config)
 
     def update_specific_entity_config(self):
@@ -93,8 +97,8 @@ class ServEntBinarySensor(ServEntEntity[ServentBinarySensorDefinition], BinarySe
         await self.restore_attributes()
 
 
-class ServEntThresholdBinarySensor(ServEntEntity[ServentThresholdBinarySensorDefinition], ThresholdSensor):
-    def __init__(self, hass: HomeAssistant, config: ServentThresholdBinarySensorDefinition):
+class ServEntThresholdBinarySensor(ServEntEntity[ThresholdBinarySensorConfig], ThresholdSensor):
+    def __init__(self, hass: HomeAssistant, config: ThresholdBinarySensorConfig):
         super().__init__(
             hass=hass,
             entity_id=config.entity_id,

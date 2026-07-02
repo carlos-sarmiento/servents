@@ -45,12 +45,19 @@ class TestServEntSensor:
         assert sensor._attr_options is None
 
     def test_enum_options(self):
+        # Since WP3 the shared model forces device_class "enum" when options
+        # are provided.
         sensor = ServEntSensor(make_definition("sensor", "s1", options=["low", "high"]))
         assert sensor._attr_options == ["low", "high"]
+        assert sensor._attr_device_class is SensorDeviceClass.ENUM
 
-    def test_invalid_device_class_raises(self):
-        with pytest.raises(ValueError):
-            ServEntSensor(make_definition("sensor", "s1", device_class="not-a-class"))
+    def test_invalid_device_class_raises_at_parse_time(self):
+        # Flipped (WP3): the bad value is now rejected while parsing the
+        # definition (Literal validation), before any entity is built.
+        from homeassistant.exceptions import ServiceValidationError
+
+        with pytest.raises(ServiceValidationError):
+            make_definition("sensor", "s1", device_class="not-a-class")
 
     def test_set_state_and_attributes(self):
         sensor = ServEntSensor(make_definition("sensor", "s1", fixed_attributes={"fixed": 1}))
@@ -137,21 +144,29 @@ class TestServEntNumber:
         assert ent._attr_native_min_value == 1.0
         assert ent._attr_native_step == 0.5
 
+    def test_mode_is_required(self):
+        # Flipped (WP3): mode used to be optional (None → HA default); the
+        # shared model requires it.
+        from homeassistant.exceptions import ServiceValidationError
+
+        with pytest.raises(ServiceValidationError):
+            make_definition("number", "n1")
+
     def test_falsy_bounds_are_ignored(self):
         # min_value=0, max_value=0, and step=0 are falsy but are legitimate values.
         # They are now correctly applied (0.0 checks use `is not None` instead of truthiness).
-        ent = ServEntNumber(make_definition("number", "n1", min_value=0.0, max_value=0.0, step=0.0))
+        ent = ServEntNumber(make_definition("number", "n1", mode="auto", min_value=0.0, max_value=0.0, step=0.0))
         assert ent._attr_native_min_value == 0.0
         assert ent._attr_native_max_value == 0.0
         assert ent._attr_native_step == 0.0
 
     def test_set_native_value(self):
-        ent = ServEntNumber(make_definition("number", "n1"))
+        ent = ServEntNumber(make_definition("number", "n1", mode="auto"))
         ent.set_native_value(7.5)
         assert ent._attr_native_value == 7.5
 
     def test_set_state(self):
-        ent = ServEntNumber(make_definition("number", "n1"))
+        ent = ServEntNumber(make_definition("number", "n1", mode="auto"))
         ent.set_new_state_and_attributes(3.2, None)
         assert ent._attr_native_value == 3.2
         assert ent._attr_extra_state_attributes == {"servent_id": "n1"}
@@ -177,7 +192,9 @@ class TestServEntSelect:
 
 class TestServEntButton:
     def make_button(self, hass=None, **extra):
-        return ServEntButton(make_definition("button", "btn1", **extra), hass or MagicMock())
+        # event is required since WP3 (a "" default fired the literal event
+        # "servent.").
+        return ServEntButton(make_definition("button", "btn1", **({"event": "e"} | extra)), hass or MagicMock())
 
     def test_event_config(self):
         ent = self.make_button(event="pressed", event_data={"k": "v"}, device_class="restart")

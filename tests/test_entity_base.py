@@ -5,8 +5,8 @@ subclass hooks (update_specific_entity_config / set_new_state_and_attributes).
 """
 
 from homeassistant.const import EntityCategory
+from servents.data_model.entity_configs import DeviceConfig
 
-from custom_components.servents.data_carriers import ServentDeviceDefinition
 from custom_components.servents.entity import ServentExtraData
 from custom_components.servents.sensor import ServEntSensor
 from tests.conftest import make_definition
@@ -89,13 +89,15 @@ class TestDeviceInfo:
         assert info["identifiers"] == {("servents", "device-d1")}
         assert info["name"] == "Dev"
 
-    def test_dict_device_definition_is_coerced_to_dataclass(self):
-        # device_info tolerates a raw dict left on the config and converts it in place.
+    def test_device_info_getter_has_no_side_effects(self):
+        # Fixed (L6, WP3): coercion happens at parse time only; the getter
+        # just reads. A DeviceConfig set on the config is used as-is.
         sensor = make_sensor()
-        sensor.servent_config.device_definition = {"device_id": "d2", "name": "DictDev"}
+        device = DeviceConfig(device_id="d2", name="DictDev")
+        sensor.servent_config.device_definition = device
 
         info = sensor.device_info
-        assert isinstance(sensor.servent_config.device_definition, ServentDeviceDefinition)
+        assert sensor.servent_config.device_definition is device
         assert info["identifiers"] == {("servents", "device-d2")}
 
 

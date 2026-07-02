@@ -1784,7 +1784,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/08/64/a99f27d3b4347486c
 
 [[package]]
 name = "pyserde"
-version = "0.23.0"
+version = "0.31.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beartype" },
@@ -1794,9 +1794,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "typing-inspect" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/73/fb/1dbfeb6b800ac2251b189ade84f4be6b3b521ab4d163be2833893c381947/pyserde-0.23.0.tar.gz", hash = "sha256:8369837982d201bc068d95eac8f63edfae66942d87b1c02c5ecadd6d14a42c4b", size = 43329, upload-time = "2025-01-10T07:00:10.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/d6/4c377a4bcaffccc77ad2a8d69fbf795958f5beb6744743de51008d1b72d0/pyserde-0.31.6.tar.gz", hash = "sha256:f4b8e3d3630fcb65600b17b1758735115e9685524b620d7fe7685d565f48106a", size = 524776, upload-time = "2026-06-29T17:51:50.297Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/c1/0208599382b259251d33b5cbb835b15ce480621791b7a1f86dd09e9a69c5/pyserde-0.23.0-py3-none-any.whl", hash = "sha256:72ba7cc30bad1e0d6cfe3c9900ce078559c295c782a19759aa950d6009554031", size = 45244, upload-time = "2025-01-10T07:00:08.969Z" },
+    { url = "https://files.pythonhosted.org/packages/c3/99/b13a43ac0ee0eeae3604629e4dda969243d68a569a9d6182aedf8d63d196/pyserde-0.31.6-py3-none-any.whl", hash = "sha256:c82003bb98f370edd9b1df76ee236fcd353d77979d42956b8fcac1c0518aebdf", size = 51957, upload-time = "2026-06-29T17:51:48.989Z" },
 ]
 
 [[package]]

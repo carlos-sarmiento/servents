@@ -180,7 +180,9 @@ unused), and merge current `fixed_attributes` last.
   `manifest.json` needs `"requirements": ["servents-data-model==0.6.0"]`
   (which pulls in pyserde and its dependency tree: beartype, plum-dispatch,
   jinja2, casefy). The git submodule alone does not make the package
-  importable at runtime.
+  importable at runtime. **Fixed** in WP3 (`requirements` line added to
+  `manifest.json`; note that the dev lockfile's pyserde had to be bumped
+  0.23.0 → 0.31.6 — 0.23.0 crashes on import under Python 3.14).
 
 ### H6. Threshold sensor reconfiguration is silently ignored
 
@@ -253,7 +255,10 @@ for its main use case with the production client. Fix: coerce
 `device_definition` dicts in `to_dataclass` (alongside `device_config`), or
 land the `servents-data-model` migration, where `serde.from_dict`
 deserializes the nested `DeviceConfig` natively (verified — see the adoption
-section). **Fixed** in WP1b (stopgap coercion in `to_dataclass`; superseded by WP3's native `serde.from_dict` deserialization).
+section). **Fixed** in WP1b (stopgap coercion in `to_dataclass`). **Fixed**
+structurally in WP3: `data_carriers.py` is gone and `serde.from_dict`
+deserializes `device_definition` into `DeviceConfig` at parse time, which
+supersedes and removes the WP1b stopgap.
 
 ---
 
@@ -343,7 +348,9 @@ The `servents-data-model` migration solves the field-level half of this:
 literal/enum values at parse time (verified against pyserde 0.31.4). Unknown
 keys are still silently ignored — same lenience as today — and a top-level
 `vol.Schema` (entities is a non-empty list of dicts; update_state has
-servent_id/state) is still worth adding for UI-friendly errors.
+servent_id/state) is still worth adding for UI-friendly errors. **Fixed**
+(field-validation half) in WP3: parse errors surface as
+`ServiceValidationError`. The top-level `vol.Schema` half remains for WP5.
 
 ### M9. `to_dataclass` mutates the caller's service-call data
 
@@ -352,17 +359,19 @@ servent_id/state) is still worth adding for UI-friendly errors.
 dicts (`data["device_definition"] = ...`, `data_carriers.py:127`). The inner
 dicts belong to the (nominally read-only) `ServiceCall.data`. It works
 because `ReadOnlyDict` doesn't freeze nested dicts, but mutating a caller's
-service payload is a side effect waiting to become a bug.
+service payload is a side effect waiting to become a bug. **Fixed** in WP3:
+`serde.from_dict` never writes into the input dict (verified), and the
+legacy `device_config` alias is handled with a shallow copy.
 
 ### M10. Legacy / deprecated API usage
 
-| Location             | Issue                                                                                                                                                                                     |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                                                                                               |
-| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`                                                                               |
-| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict                                                                                                |
-| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)`                                                                            |
-| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL. **Fixed** in WP2 (`integration_type` + `documentation`; `requirements` lands in WP3). |
+| Location             | Issue                                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`                                                                                          |
+| `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`                                                                          |
+| `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict                                                                                           |
+| `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)`                                                                       |
+| `manifest.json`      | Missing `requirements` (see H5) and `integration_type`; `documentation` points at the issues URL. **Fixed** in WP2 (`integration_type` + `documentation`) and WP3 (`requirements`). |
 
 ### M11. Duplicate "HASS is up" entity on config-entry reload
 
@@ -400,7 +409,8 @@ in the state machine.
   Dicts don't just "legitimately end up there" — they always do with
   Domovoy's payload (see H8, where this lazy coercion is the crash path).
   Coerce in `to_dataclass` instead; a getter with write side effects is a
-  trap.
+  trap. **Fixed** in WP3: coercion happens only at parse time
+  (`serde.from_dict`); the getter is read-only.
 - **L7. Restore machinery half-adopted.** `ServentExtraData` +
   `extra_restore_state_data` would be the correct way to persist only
   ServEnts-owned attributes (fixing H4), and `ServEntButton.restore_attributes`
@@ -418,6 +428,8 @@ in the state machine.
   setup, including first install — the name overpromises.
 - **L11. `inspect.signature` on every build** (`data_carriers.py:143`) —
   trivial to cache per class; only matters if entity creation is chatty.
+  **Fixed** in WP3: `clean_params_and_build` is gone with
+  `data_carriers.py`; pyserde generates the deserializers once per class.
 
 ---
 
@@ -493,7 +505,10 @@ silent key-dropping (M8), stringly-typed fields (`device_class`,
 inside entity configuration where a bad value raises mid-build (H7 path) —
 are exactly the things `serde.from_dict` fixes at parse time. The remaining
 design decision is dispatch: `to_dataclass` switches on the `entity_type`
-string, which maps 1:1 onto `EntityType` in the shared package.
+string, which maps 1:1 onto `EntityType` in the shared package. **Fixed** in
+WP3: `data_carriers.py` deleted; `definitions.py` now hosts the
+`EntityType`-keyed dispatch map, `serde.from_dict` parsing, and the
+integration-side `device-` prefix / `DeviceInfo` helpers.
 
 ### What's in good shape
 
