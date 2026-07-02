@@ -126,7 +126,7 @@ class TestHandleCreateEntity:
         # builder is only invoked once; the existing live entity is reconfigured
         assert builder.call_count == 1
         assert registrar.get_live_entity_for_servent_id("s1") is live
-        live._update_servent_entity_config.assert_called_once()
+        live.apply_config.assert_called_once()
         live.verified_schedule_update_ha_state.assert_called_once()
 
 
@@ -260,7 +260,7 @@ class TestRegisterAndUpdateAllEntities:
         # "new-one" is built; "existing" is reconfigured in place
         assert builder.call_count == 1
         assert builder.call_args[0][0].servent_id == "new-one"
-        existing_live._update_servent_entity_config.assert_called_once()
+        existing_live.apply_config.assert_called_once()
         existing_live.verified_schedule_update_ha_state.assert_called_once()
 
     def test_noop_when_registry_is_empty(self, registrar):

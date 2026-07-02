@@ -137,9 +137,11 @@ class TestDomovoyUpdateState:
         live.set_new_state_and_attributes.assert_called_once_with(21.5, {})
         live.verified_schedule_update_ha_state.assert_called_once()
 
-    async def test_update_state_on_button_is_accepted_as_noop(self, registrar):
-        # Constraint 3: Domovoy exposes set_to on buttons; the call must keep
-        # succeeding. Currently it is a silent no-op via the base-class hook.
+    async def test_update_state_on_button_applies_attributes(self, registrar):
+        # Constraint 3 / M2 (WP6): Domovoy exposes set_to on buttons; the call
+        # must keep succeeding. It is no longer a silent no-op — the button now
+        # applies the merged attributes (a button has no native value, so state
+        # is ignored) and never raises. servent_id must stay present.
         from servents.data_model.entity_configs import ButtonConfig
 
         from custom_components.servents.button import ServEntButton
@@ -154,7 +156,9 @@ class TestDomovoyUpdateState:
         registrar.register_live_entity("b1", button)
 
         await handle_update_entity(
-            FakeServiceCall({"servent_id": "b1", "state": "anything", "attributes": {}}, registrar)
+            FakeServiceCall({"servent_id": "b1", "state": "anything", "attributes": {"note": "hi"}}, registrar)
         )
-        # No exception, no state: buttons have no state to set.
+        # No exception; buttons have no native value to set.
         assert not hasattr(button, "_attr_native_value")
+        # The attributes ARE applied, and servent_id is always present.
+        assert button._attr_extra_state_attributes == {"note": "hi", "servent_id": "b1"}

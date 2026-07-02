@@ -194,6 +194,15 @@ and calls `_update_servent_entity_config`. For
 `entity_id`, `lower`, `upper`, `hysteresis` — were consumed once by the
 `ThresholdSensor.__init__` call and are never updated. A user who re-creates
 a threshold sensor with new bounds gets the old bounds with no warning.
+**Fixed** in WP6: `apply_config` (the single re-appliable config hook) now
+re-applies `entity_id` / `lower` / `upper` / `hysteresis` to the
+`ThresholdSensor` internals on every reconfigure — updating `_entity_id`,
+`source_entity_id`, `_threshold_lower`/`_threshold_upper` (deleting a bound
+when it goes to `None`, matching HA's `getattr(..., None)` reads),
+`threshold_type`, and `_hysteresis` — and, when the entity is already added
+to hass, drops the old source-entity tracker
+(`_call_on_remove_callbacks()`) and re-runs `_async_setup_sensor()` so the
+new bounds and source take effect immediately.
 
 ### H7. Partial-failure semantics of `create_entity` are inconsistent and lossy
 
@@ -279,7 +288,13 @@ no-op (`entity.py:56-57`) runs. Calling `update_state` for a button's
 `servent_id` reports success, logs nothing, changes nothing. Per Domovoy
 constraint 3, rejecting the call is off the table (Domovoy exposes `set_to`
 on buttons through the base class): fix by applying the attributes, or keep
-the no-op but log a warning so the caller has a signal.
+the no-op but log a warning so the caller has a signal. **Fixed** in WP6: the
+base `set_new_state_and_attributes` owns the
+`fixed_attributes | attributes | {"servent_id": ...}` merge and calls a
+platform `_write_native_state` hook. A button leaves that hook as the base
+no-op (it has no native value), so `update_state` on a button now APPLIES the
+merged attributes — `servent_id` always present, never overridable — and
+never raises.
 
 ### M3. Every entity's unique_id is prefixed `sensor-`, regardless of platform
 
@@ -435,7 +450,10 @@ its entities, so the fresh add carries no duplicate unique_id.
 - **L8. Fixed attributes silently ignored for threshold sensors.**
   `ServEntThresholdBinarySensor.extra_state_attributes`
   (`binary_sensor.py:122-128`) merges threshold internals and `servent_id`
-  but not `fixed_attributes`, unlike every other platform.
+  but not `fixed_attributes`, unlike every other platform. **Fixed** in WP6:
+  the property now merges the `ThresholdSensor` internals with
+  `self.fixed_attributes` (which already carries `servent_id`) and
+  `source_entity_id`, so it falls out of the base owning `fixed_attributes`.
 - **L9. Services are never unregistered** on unload, and the websocket
   command / event listeners from `async_setup_entry` are re-registered on
   each reload (related to M7/M11). **Listener half fixed** in WP4: the
@@ -502,7 +520,15 @@ init-in-all-but-name that subclasses must remember to call from `__init__`
 `_update_servent_entity_config`, which is *also* called later for
 reconfiguration, which in turn calls the `update_specific_entity_config`
 hook. Three overlapping lifecycle methods where two (`__init__` +
-`apply_config`) would do.
+`apply_config`) would do. **Fixed** in WP6: `ServEntEntityAttributes` is merged
+into a single `ServEntEntity[T]` base (`Generic[T], RestoreEntity`). The
+lifecycle is now exactly two steps — a real `__init__(self, config)`
+(subclasses call `super().__init__(config)`; the threshold sensor calls
+`ServEntEntity.__init__(self, config)` explicitly after `ThresholdSensor.__init__`)
+that sets the frozen flags/IDs, and one `apply_config(config)` hook used for
+BOTH initial setup and reconfigure
+(`services.register_and_update_all_entities` calls `apply_config`). The
+per-platform hook `update_specific_entity_config` is renamed `configure_platform`.
 
 ### S4. Five nearly identical platform modules
 
@@ -513,7 +539,18 @@ target `_attr_*` changing (`sensor.py:40`, `switch.py:41`, `number.py:52`,
 each. Same for the `async_setup_entry` builder-registration boilerplate and
 the `async_added_to_hass` restore pattern. The base class should own the
 attribute merge and the restore flow, with a single small hook for "write
-the native state attr".
+the native state attr". **Fixed** in WP6: the base `ServEntEntity` owns (a) the
+`fixed_attributes | attributes | {"servent_id": ...}` merge in
+`set_new_state_and_attributes`, calling a per-platform `_write_native_state`
+hook for just the native value (`_attr_native_value` / `_attr_is_on` /
+`_attr_current_option`); (b) the builder-registration boilerplate via the
+module helper `register_platform_builder`, so each platform's
+`async_setup_entry` is one line; (c) the common `async_added_to_hass` restore
+flow, which calls a per-platform `_restore_native_state` hook (the legitimately
+platform-specific native-value restore) then the shared `restore_attributes`.
+Each platform shrank to a `configure_platform`, a `_write_native_state`, and
+(where it restores one) a `_restore_native_state`. The attribute-restore
+behavior is preserved verbatim (bugs and all) — H3/H4/L7 remain WP7's.
 
 ### S5. The registrar conflates three registries
 

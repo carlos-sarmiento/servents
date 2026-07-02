@@ -236,13 +236,63 @@ class TestServEntThresholdBinarySensor:
         assert ent.device_class is BinarySensorDeviceClass.MOTION
 
     def test_extra_state_attributes_merge_threshold_and_servent_data(self):
-        attrs = self.make_threshold().extra_state_attributes
+        # L8 (WP6): fixed_attributes are now included, like every other platform
+        # (they fall out of the base owning the merge). servent_id, the
+        # threshold internals, and source_entity_id stay.
+        attrs = self.make_threshold(fixed_attributes={"zone": "attic"}).extra_state_attributes
         assert attrs["servent_id"] == "th1"
+        assert attrs["zone"] == "attic"
         assert attrs["source_entity_id"] == "sensor.source"
         assert attrs["entity_id"] == "sensor.source"
         assert attrs["lower"] == 1.0
         assert attrs["upper"] == 10.0
         assert attrs["hysteresis"] == 0.5
+
+    def test_reconfigure_applies_new_bounds(self):
+        # H6 (WP6): re-creating a threshold sensor with new bounds/source used to
+        # be silently ignored (params were consumed once by __init__). apply_config
+        # now re-applies them to the ThresholdSensor internals.
+        ent = self.make_threshold()
+        new_config = make_definition(
+            "threshold", "th1", entity_id="sensor.other", lower=5.0, upper=20.0, hysteresis=1.5
+        )
+        ent.apply_config(new_config)
+
+        assert ent._entity_id == "sensor.other"
+        assert ent.source_entity_id == "sensor.other"
+        assert ent._threshold_lower == 5.0
+        assert ent._threshold_upper == 20.0
+        assert ent._hysteresis == 1.5
+        attrs = ent.extra_state_attributes
+        assert attrs["lower"] == 5.0
+        assert attrs["upper"] == 20.0
+        assert attrs["source_entity_id"] == "sensor.other"
+
+    def test_reconfigure_while_live_re_runs_sensor_setup(self):
+        # When already added to hass, a reconfigure re-tracks the (new) source
+        # entity: it drops the old on-remove callbacks and re-runs the
+        # ThresholdSensor setup so new bounds/source take effect immediately.
+        ent = self.make_threshold()
+        ent.hass = MagicMock()
+        ent._call_on_remove_callbacks = MagicMock()
+        ent._async_setup_sensor = MagicMock()
+
+        ent.apply_config(
+            make_definition("threshold", "th1", entity_id="sensor.other", lower=5.0, upper=20.0, hysteresis=1.5)
+        )
+
+        ent._call_on_remove_callbacks.assert_called_once()
+        ent._async_setup_sensor.assert_called_once()
+        assert ent._entity_id == "sensor.other"
+
+    def test_reconfigure_clearing_a_bound_drops_it(self):
+        # A reconfigure that removes the lower bound must actually drop it
+        # (ThresholdSensor reads bounds via getattr(..., None)).
+        ent = self.make_threshold()
+        assert ent._threshold_lower == 1.0
+        ent.apply_config(make_definition("threshold", "th1", entity_id="sensor.source", upper=10.0, hysteresis=0.5))
+        assert not hasattr(ent, "_threshold_lower")
+        assert ent.extra_state_attributes["lower"] is None
 
     async def test_restore_attributes_is_noop(self):
         # Threshold sensors compute state from the source entity; restore is disabled.

@@ -7,11 +7,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from servents.data_model.entity_configs import EntityConfig
 
 from .const import DOMAIN
-from .entity import ServEntEntity
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+
+    from .entity import ServEntEntity
 
 T = TypeVar("T", bound=EntityConfig)
 

@@ -6,8 +6,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from servents.data_model.entity_configs import SelectConfig
 
-from .entity import ServEntEntity
-from .registrar import get_registrar_for_entry
+from .entity import ServEntEntity, register_platform_builder
 
 
 async def async_setup_entry(
@@ -16,18 +15,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar_for_entry(config_entry).register_builder_for_definition(
-        SelectConfig,
-        lambda x: ServEntSelect(x),
-        async_add_entities,
-    )
+    register_platform_builder(config_entry, SelectConfig, lambda x: ServEntSelect(x), async_add_entities)
 
 
 class ServEntSelect(ServEntEntity[SelectConfig], SelectEntity, RestoreEntity):
-    def __init__(self, config: SelectConfig) -> None:
-        self.servent_configure(config)
-
-    def update_specific_entity_config(self) -> None:
+    def configure_platform(self) -> None:
         # Select Attributes
         self._attr_options = self.servent_config.options
 
@@ -39,15 +31,9 @@ class ServEntSelect(ServEntEntity[SelectConfig], SelectEntity, RestoreEntity):
         self._attr_current_option = option
         self.verified_schedule_update_ha_state()
 
-    def set_new_state_and_attributes(self, state, attributes) -> None:
+    def _write_native_state(self, state) -> None:
         self._attr_current_option = state
-        if attributes is None:
-            attributes = {}
-        self._attr_extra_state_attributes = self.fixed_attributes | attributes | {"servent_id": self.servent_id}
 
-    async def async_added_to_hass(self) -> None:
-        """Restore last state."""
+    async def _restore_native_state(self) -> None:
         if (last_state := await self.async_get_last_state()) is not None:
             self._attr_current_option = last_state.state
-
-        await self.restore_attributes()

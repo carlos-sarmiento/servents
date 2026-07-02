@@ -63,10 +63,12 @@ class TestServentConfigure:
 
 
 class TestUpdateConfig:
+    # Reconfigure is now the single apply_config hook (WP6), called both on
+    # initial setup and on re-create; it replaced _update_servent_entity_config.
     def test_update_replaces_config_and_name(self):
         sensor = make_sensor()
         new_config = make_definition("sensor", "s1", name="Renamed", fixed_attributes={"a": 1})
-        sensor._update_servent_entity_config(new_config)
+        sensor.apply_config(new_config)
 
         assert sensor.servent_config is new_config
         assert sensor._attr_name == "Renamed"
@@ -75,7 +77,7 @@ class TestUpdateConfig:
     def test_update_does_not_touch_current_state(self):
         sensor = make_sensor()
         sensor.set_new_state_and_attributes(10, {})
-        sensor._update_servent_entity_config(make_definition("sensor", "s1", name="Renamed"))
+        sensor.apply_config(make_definition("sensor", "s1", name="Renamed"))
         assert sensor._attr_native_value == 10
 
 

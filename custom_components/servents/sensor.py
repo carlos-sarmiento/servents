@@ -8,8 +8,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from servents.data_model.entity_configs import SensorConfig
 
-from .entity import ServEntEntity
-from .registrar import get_registrar_for_entry
+from .entity import ServEntEntity, register_platform_builder
 
 
 async def async_setup_entry(
@@ -18,16 +17,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar_for_entry(config_entry).register_builder_for_definition(
-        SensorConfig, lambda x: ServEntSensor(x), async_add_entities
-    )
+    register_platform_builder(config_entry, SensorConfig, lambda x: ServEntSensor(x), async_add_entities)
 
 
 class ServEntSensor(ServEntEntity[SensorConfig], RestoreSensor):
-    def __init__(self, config: SensorConfig):
-        self.servent_configure(config)
-
-    def update_specific_entity_config(self):
+    def configure_platform(self):
         # Sensor Attributes
         self._attr_device_class = (
             SensorDeviceClass(self.servent_config.device_class) if self.servent_config.device_class else None
@@ -37,18 +31,12 @@ class ServEntSensor(ServEntEntity[SensorConfig], RestoreSensor):
         self._attr_state_class = self.servent_config.state_class
         self._attr_options = self.servent_config.options
 
-    def set_new_state_and_attributes(self, state, attributes):
+    def _write_native_state(self, state):
         if state is not None and self._attr_device_class in [SensorDeviceClass.DATE, SensorDeviceClass.TIMESTAMP]:
             state = datetime.fromtimestamp(int(state), timezone.utc)
 
         self._attr_native_value = state
-        if attributes is None:
-            attributes = {}
-        self._attr_extra_state_attributes = self.fixed_attributes | attributes | {"servent_id": self.servent_id}
 
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher listening for entity data notifications."""
+    async def _restore_native_state(self) -> None:
         if (last_sensor_data := await self.async_get_last_sensor_data()) is not None:
             self._attr_native_value = last_sensor_data.native_value
-
-        await self.restore_attributes()

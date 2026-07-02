@@ -150,7 +150,7 @@ def register_and_update_all_entities(registrar: ServentDefinitionRegistrar) -> N
             if live_entity is None:
                 registrar.build_and_register_entity(ent_config)
             else:
-                live_entity._update_servent_entity_config(ent_config)
+                live_entity.apply_config(ent_config)
                 live_entity.verified_schedule_update_ha_state()
         except HomeAssistantError:
             raise

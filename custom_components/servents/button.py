@@ -6,8 +6,7 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from servents.data_model.entity_configs import ButtonConfig
 
-from .entity import ServEntEntity
-from .registrar import get_registrar_for_entry
+from .entity import ServEntEntity, register_platform_builder
 
 
 async def async_setup_entry(
@@ -16,17 +15,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar_for_entry(config_entry).register_builder_for_definition(
-        ButtonConfig, lambda x: ServEntButton(x, hass), async_add_entities
-    )
+    register_platform_builder(config_entry, ButtonConfig, lambda x: ServEntButton(x, hass), async_add_entities)
 
 
 class ServEntButton(ServEntEntity[ButtonConfig], ButtonEntity, RestoreEntity):
     def __init__(self, config: ButtonConfig, hass: HomeAssistant):
-        self.servent_configure(config)
+        super().__init__(config)
         self._hass = hass
 
-    def update_specific_entity_config(self):
+    def configure_platform(self):
         # Button Attributes
         self.servent_event = self.servent_config.event
         self.event_data = self.servent_config.event_data
@@ -38,24 +35,13 @@ class ServEntButton(ServEntEntity[ButtonConfig], ButtonEntity, RestoreEntity):
         """Handle the button press."""
         self._hass.bus.async_fire(f"servent.{self.servent_event}", self.event_data)
 
-    async def async_added_to_hass(self) -> None:
-        """Restore last state."""
-        await self.restore_attributes()
+    # A button has no native value, so _write_native_state stays the base no-op.
+    # update_state on a button therefore applies the merged attributes (incl.
+    # servent_id) via the base set_new_state_and_attributes and never raises
+    # (M2 / constraint 3).
 
     async def restore_attributes(self):
         if (last_extra_attributes := await self.async_get_last_extra_data()) is not None:
             self._attr_extra_state_attributes = (
                 last_extra_attributes.as_dict() | self.fixed_attributes | {"servent_id": self.servent_id}
             )
-
-    @property
-    def name(self) -> str:
-        """Return the name of the sensor."""
-        return self._attr_name  # type: ignore
-
-    @property
-    def extra_state_attributes(self):
-        extra_attributes = super().extra_state_attributes or {}
-        return (
-            self.fixed_attributes | extra_attributes | {"servent_id": self.servent_id}  # type: ignore
-        )

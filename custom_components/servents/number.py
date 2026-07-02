@@ -6,8 +6,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from servents.data_model.entity_configs import NumberConfig
 
-from .entity import ServEntEntity
-from .registrar import get_registrar_for_entry
+from .entity import ServEntEntity, register_platform_builder
 
 
 async def async_setup_entry(
@@ -16,20 +15,15 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor platform."""
-    get_registrar_for_entry(config_entry).register_builder_for_definition(
-        NumberConfig, lambda x: ServEntNumber(x), async_add_entities
-    )
+    register_platform_builder(config_entry, NumberConfig, lambda x: ServEntNumber(x), async_add_entities)
 
 
 class ServEntNumber(ServEntEntity[NumberConfig], RestoreNumber):
-    def __init__(self, config: NumberConfig):
-        self.servent_configure(config)
-
     def set_native_value(self, value: float) -> None:
         self._attr_native_value = value
         self.verified_schedule_update_ha_state()
 
-    def update_specific_entity_config(self):
+    def configure_platform(self):
         # Number Attributes
         self._attr_device_class = (
             NumberDeviceClass(self.servent_config.device_class) if self.servent_config.device_class else None
@@ -49,16 +43,9 @@ class ServEntNumber(ServEntEntity[NumberConfig], RestoreNumber):
         if self.servent_config.step is not None:
             self._attr_native_step = self.servent_config.step
 
-    def set_new_state_and_attributes(self, state, attributes):
+    def _write_native_state(self, state):
         self._attr_native_value = state
-        if attributes is None:
-            attributes = {}
-        self._attr_extra_state_attributes = self.fixed_attributes | attributes | {"servent_id": self.servent_id}
 
-    async def async_added_to_hass(self) -> None:
-        """Connect to dispatcher listening for entity data notifications."""
-
+    async def _restore_native_state(self) -> None:
         if (last_number_data := await self.async_get_last_number_data()) is not None:
             self._attr_native_value = last_number_data.native_value
-
-        await self.restore_attributes()
