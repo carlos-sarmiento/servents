@@ -103,7 +103,7 @@ config entry raises `KeyError: 'servents'` after the platforms unload,
 so HA reports the unload as failed every time.
 
 Fix: delete the line, or store per-entry data during `async_setup_entry` if
-there is ever anything to store.
+there is ever anything to store. **Fixed in WP1a.**
 
 ### H2. `cleanup_devices` can delete devices belonging to *other* integrations
 
@@ -265,7 +265,7 @@ section).
 `min_value=0.0`, `max_value=0.0`, or `step=0.0` are ignored and HA defaults
 apply instead. `min_value=0` is an extremely common configuration
 (pinned as a quirk in `test_platform_entities.py:140-146`). Should be
-`is not None`.
+`is not None`. **Fixed in WP1a.**
 
 ### M2. `update_state` on a button silently does nothing
 

@@ -138,12 +138,12 @@ class TestServEntNumber:
         assert ent._attr_native_step == 0.5
 
     def test_falsy_bounds_are_ignored(self):
-        # min_value=0 and step=0 are falsy, so they do NOT set the attrs —
-        # HA falls back to its defaults. This is current (quirky) behavior.
+        # min_value=0, max_value=0, and step=0 are falsy but are legitimate values.
+        # They are now correctly applied (0.0 checks use `is not None` instead of truthiness).
         ent = ServEntNumber(make_definition("number", "n1", min_value=0.0, max_value=0.0, step=0.0))
-        assert "_attr_native_min_value" not in ent.__dict__
-        assert "_attr_native_max_value" not in ent.__dict__
-        assert "_attr_native_step" not in ent.__dict__
+        assert ent._attr_native_min_value == 0.0
+        assert ent._attr_native_max_value == 0.0
+        assert ent._attr_native_step == 0.0
 
     def test_set_native_value(self):
         ent = ServEntNumber(make_definition("number", "n1"))
