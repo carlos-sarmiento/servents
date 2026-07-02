@@ -1,5 +1,3 @@
-import logging
-
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
@@ -29,8 +27,6 @@ __all__ = [
     "register_and_update_all_entities",
     "websocket_hass_is_up",
 ]
-
-_LOGGER = logging.getLogger(__name__)
 
 WEBSOCKET_COMMAND = "servent/hass-state"
 
@@ -70,7 +66,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     websocket_api.async_register_command(hass, websocket_hass_is_up)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    hass.bus.async_fire("servent.core_reloaded")
+
+    # L10: Fire the core_reloaded event only on actual reload, not first install.
+    # Track entries that have been set up to distinguish reload from first setup.
+    setup_entries = hass.data.setdefault("servents_setup_entries", set())
+    if entry.entry_id in setup_entries:
+        # This entry has been set up before, so this is a reload.
+        hass.bus.async_fire("servent.core_reloaded")
+    else:
+        # First time setting up this entry.
+        setup_entries.add(entry.entry_id)
 
     return True
 

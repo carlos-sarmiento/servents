@@ -23,10 +23,6 @@ class ServEntSelect(ServEntEntity[SelectConfig], SelectEntity, RestoreEntity):
         # Select Attributes
         self._attr_options = self.servent_config.options
 
-    @property
-    def options(self) -> list[str]:
-        return self._attr_options
-
     def select_option(self, option: str) -> None:
         self._attr_current_option = option
         self.verified_schedule_update_ha_state()

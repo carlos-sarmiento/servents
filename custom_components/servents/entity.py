@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Generic, TypeVar
 
 from homeassistant.config_entries import ConfigEntry
@@ -10,8 +9,6 @@ from servents.data_model.entity_configs import EntityConfig
 
 from .definitions import get_device_info
 from .registrar import get_registrar_for_entry
-
-_LOGGER = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=EntityConfig)
 

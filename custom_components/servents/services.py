@@ -111,7 +111,7 @@ async def handle_update_entity(call: ServiceCall) -> None:
         live_entity.verified_schedule_update_ha_state()
 
     else:
-        _LOGGER.warn(
+        _LOGGER.warning(
             f"Tried to update a Non Registered ID {data.servent_id}. This can happen if you are sending an update event immediately after a creation event and the ID hasn't been registered yet"
         )
 
