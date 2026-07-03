@@ -59,23 +59,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up this integration using UI."""
     entry.runtime_data = ServentDefinitionRegistrar()
 
-    # Services and the websocket command are registered per config entry so
-    # they pair with async_unload_entry teardown (L9). ServEnts is single-entry,
-    # so there is no double-registration concern.
-    async_register_services(hass)
-    websocket_api.async_register_command(hass, websocket_hass_is_up)
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        # Services and the websocket command are registered only after platform
+        # setup succeeds. If setup fails, the exception handler below removes
+        # any platform listeners and any partially registered global handlers.
+        async_register_services(hass)
+        websocket_api.async_register_command(hass, websocket_hass_is_up)
 
-    # L10: Fire the core_reloaded event only on actual reload, not first install.
-    # Track entries that have been set up to distinguish reload from first setup.
-    setup_entries = hass.data.setdefault("servents_setup_entries", set())
-    if entry.entry_id in setup_entries:
-        # This entry has been set up before, so this is a reload.
-        hass.bus.async_fire("servent.core_reloaded")
-    else:
-        # First time setting up this entry.
-        setup_entries.add(entry.entry_id)
+        # L10: Fire the core_reloaded event only on actual reload, not first install.
+        # Track entries that have been set up to distinguish reload from first setup.
+        setup_entries = hass.data.setdefault("servents_setup_entries", set())
+        if entry.entry_id in setup_entries:
+            # This entry has been set up before, so this is a reload.
+            hass.bus.async_fire("servent.core_reloaded")
+        else:
+            # First time setting up this entry.
+            setup_entries.add(entry.entry_id)
+    except Exception:
+        _async_teardown_entry(hass, entry)
+        raise
 
     return True
 
@@ -86,14 +90,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not unload_ok:
         return False
 
+    _async_teardown_entry(hass, entry)
+
+    return unload_ok
+
+
+def _async_teardown_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove global handlers and per-entry listeners after successful teardown."""
     async_unregister_services(hass)
     _async_unregister_websocket_command(hass)
 
     registrar = getattr(entry, "runtime_data", None)
     if isinstance(registrar, ServentDefinitionRegistrar):
         registrar.release_hass_state_listeners()
-
-    return unload_ok
 
 
 def _async_unregister_websocket_command(hass: HomeAssistant) -> None:

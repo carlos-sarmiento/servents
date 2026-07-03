@@ -103,16 +103,30 @@ class ServEntEntity(Generic[T], RestoreEntity):
 
     def apply_config(self, config: T) -> None:
         """(Re)apply the mutable configuration. Runs on setup and reconfigure."""
+        previous_fixed_attributes = getattr(self, "fixed_attributes", {})
         self.servent_config = config
 
         self._attr_name = config.name
         self._attr_entity_category = EntityCategory(config.entity_category) if config.entity_category else None
         self.fixed_attributes = config.fixed_attributes | {"servent_id": self.servent_id}
+        self._refresh_extra_state_attributes(previous_fixed_attributes)
 
         self.configure_platform()
 
     def configure_platform(self) -> None:
         """Per-platform config hook (device_class, units, bounds, ...)."""
+
+    def _refresh_extra_state_attributes(self, previous_fixed_attributes: dict[str, Any]) -> None:
+        """Republish live attributes after fixed attributes change."""
+        current = getattr(self, "_attr_extra_state_attributes", {}) or {}
+        dynamic_attributes = {
+            key: value
+            for key, value in current.items()
+            if key not in previous_fixed_attributes and key != "servent_id"
+        }
+        self._attr_extra_state_attributes = (
+            dynamic_attributes | self.fixed_attributes | {"servent_id": self.servent_id}
+        )
 
     def set_new_state_and_attributes(self, state, attributes) -> None:
         """Write native state + republish the merged extra attributes.

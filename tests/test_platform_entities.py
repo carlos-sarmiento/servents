@@ -175,6 +175,17 @@ class TestServEntNumber:
         assert ent._attr_native_max_value == 0.0
         assert ent._attr_native_step == 0.0
 
+    def test_reconfigure_clears_omitted_bounds_and_step(self):
+        ent = ServEntNumber(
+            make_definition("number", "n1", mode="auto", min_value=1.0, max_value=10.0, step=0.5)
+        )
+
+        ent.apply_config(make_definition("number", "n1", mode="auto"))
+
+        assert ent._attr_native_min_value is None
+        assert ent._attr_native_max_value is None
+        assert ent._attr_native_step is None
+
     def test_set_native_value(self):
         ent = ServEntNumber(make_definition("number", "n1", mode="auto"))
         ent.set_native_value(7.5)

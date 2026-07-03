@@ -14,6 +14,7 @@ from custom_components.servents import (
     handle_update_entity,
     register_and_update_all_entities,
 )
+from custom_components.servents.sensor import ServEntSensor
 from custom_components.servents.services import handle_cleanup_devices
 from tests.conftest import FakeServiceCall, make_definition
 
@@ -262,6 +263,26 @@ class TestRegisterAndUpdateAllEntities:
         assert builder.call_args[0][0].servent_id == "new-one"
         existing_live.apply_config.assert_called_once()
         existing_live.verified_schedule_update_ha_state.assert_called_once()
+
+    def test_reconfigure_existing_entity_refreshes_live_fixed_attributes(self, registrar):
+        live = ServEntSensor(
+            make_definition("sensor", "existing", fixed_attributes={"zone": "kitchen", "old": "stale"})
+        )
+        live.set_new_state_and_attributes(10, {"dynamic": "kept"})
+        live.verified_schedule_update_ha_state = MagicMock()
+        registrar.register_live_entity("existing", live)
+        registrar.register_definition(
+            make_definition("sensor", "existing", name="Renamed", fixed_attributes={"zone": "attic"})
+        )
+
+        register_and_update_all_entities(registrar)
+
+        assert live._attr_extra_state_attributes == {
+            "dynamic": "kept",
+            "zone": "attic",
+            "servent_id": "existing",
+        }
+        live.verified_schedule_update_ha_state.assert_called_once_with()
 
     def test_noop_when_registry_is_empty(self, registrar):
         register_and_update_all_entities(registrar)

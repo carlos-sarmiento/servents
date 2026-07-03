@@ -85,6 +85,19 @@ class TestUpdateConfig:
         assert sensor.servent_config is new_config
         assert sensor._attr_name == "Renamed"
         assert sensor.fixed_attributes == {"a": 1, "servent_id": "s1"}
+        assert sensor._attr_extra_state_attributes == {"a": 1, "servent_id": "s1"}
+
+    def test_update_refreshes_live_attributes_and_preserves_dynamic_attributes(self):
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen", "old": "stale"})
+        sensor.set_new_state_and_attributes(10, {"dynamic": "kept"})
+
+        sensor.apply_config(make_definition("sensor", "s1", name="Renamed", fixed_attributes={"zone": "attic"}))
+
+        assert sensor._attr_extra_state_attributes == {
+            "dynamic": "kept",
+            "zone": "attic",
+            "servent_id": "s1",
+        }
 
     def test_update_does_not_touch_current_state(self):
         sensor = make_sensor()

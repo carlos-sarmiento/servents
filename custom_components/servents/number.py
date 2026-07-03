@@ -34,14 +34,9 @@ class ServEntNumber(ServEntEntity[NumberConfig], RestoreNumber):
         if self.servent_config.mode:
             self._attr_mode = NumberMode(self.servent_config.mode)
 
-        if self.servent_config.max_value is not None:
-            self._attr_native_max_value = self.servent_config.max_value
-
-        if self.servent_config.min_value is not None:
-            self._attr_native_min_value = self.servent_config.min_value
-
-        if self.servent_config.step is not None:
-            self._attr_native_step = self.servent_config.step
+        self._attr_native_max_value = self.servent_config.max_value
+        self._attr_native_min_value = self.servent_config.min_value
+        self._attr_native_step = self.servent_config.step
 
     def _write_native_state(self, state):
         self._attr_native_value = state
