@@ -16,55 +16,55 @@ code.
 
 ## Model tiers and rationale
 
-| Model  | Used for                                                                                                                                               | Packages         |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
-| Fable  | Contract-critical rework where the obvious fix breaks Domovoy, and the parse-layer replacement with deliberate behavioral deltas. Highest blast radius | WP3, WP7         |
-| Opus   | Cross-cutting restructures with HA lifecycle subtleties and several interacting findings per package. Also the orchestrator itself                     | WP4, WP5, WP6    |
-| Sonnet | Contained multi-file fixes that the audit already specifies precisely, with low design ambiguity                                                       | WP1b, WP2, WP8a  |
-| Haiku  | Mechanical edits with an exact spec and (where applicable) an existing pinned test to flip                                                             | WP1a, WP8b       |
+| Model  | Used for                                                                                                                                               | Packages        |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
+| Fable  | Contract-critical rework where the obvious fix breaks Domovoy, and the parse-layer replacement with deliberate behavioral deltas. Highest blast radius | WP3, WP7        |
+| Opus   | Cross-cutting restructures with HA lifecycle subtleties and several interacting findings per package. Also the orchestrator itself                     | WP4, WP5, WP6   |
+| Sonnet | Contained multi-file fixes that the audit already specifies precisely, with low design ambiguity                                                       | WP1b, WP2, WP8a |
+| Haiku  | Mechanical edits with an exact spec and (where applicable) an existing pinned test to flip                                                             | WP1a, WP8b      |
 
 ---
 
 ## Per-issue assignments
 
-| ID  | Package       | Model        | Fix (short)                                                     |
-| --- | ------------- | ------------ | --------------------------------------------------------------- |
-| H1  | WP1a          | Haiku        | Delete the never-set `hass.data[DOMAIN]` pop in unload          |
-| H2  | WP1b          | Sonnet       | Filter cleanup candidates by identifier domain, not value       |
-| H3  | WP7           | Fable        | Class-level `_unrecorded_attributes` so it actually applies     |
-| H4  | WP7           | Fable        | Restore only ServEnts-owned attrs; `fixed_attributes` win       |
-| H5  | WP2+WP3       | Sonnet       | Drop `pytz`; declare runtime deps in `manifest.json`            |
-| H6  | WP6           | Opus         | Apply new threshold params on re-create                         |
-| H7  | WP5           | Opus         | Proper error types; type-conflict path stays non-fatal          |
-| H8  | WP1b+WP3      | Sonnet+Fable | Coerce `device_definition` (stopgap), then native `from_dict`   |
-| M1  | WP1a          | Haiku        | `is not None` checks for number min/max/step                    |
-| M2  | WP6           | Opus         | Button `update_state` applies attributes, not silent no-op      |
-| M3  | WP8b          | Haiku        | Document frozen `sensor-` prefix in code (no behavior change)   |
-| M4  | WP8a          | Sonnet       | DATE class emits `date`; accept float epochs                    |
-| M5  | WP4           | Opus         | Key builders by type object; align with registration check      |
-| M6  | WP4           | Opus         | Stop hard-setting `is_hass_up=True` on registrar reset          |
-| M7  | WP4           | Opus         | Single "HASS is up" tracking path, with unsubscribe handles     |
-| M8  | WP3+WP5       | Fable+Opus   | Parse-time validation via data model + top-level `vol.Schema`   |
-| M9  | WP3           | Fable        | No mutation of nested `ServiceCall.data`; fixed by `from_dict`  |
-| M10 | WP2+WP5+WP8a  | Sonnet+Opus  | Modern HA APIs: async setup/register, config-flow, manifest     |
-| M11 | WP4           | Opus         | No duplicate hass-up entity on config-entry reload              |
-| L1  | WP8b          | Haiku        | Fix copy-paste strings (services.yaml header, docstring)        |
-| L2  | WP2           | Sonnet       | Align `manifest.json` / `pyproject.toml` versions               |
-| L3  | WP8b          | Haiku        | Remove dead code still remaining after WP3–WP7                  |
-| L4  | WP8b          | Haiku        | Relative imports everywhere                                     |
-| L5  | WP8a          | Sonnet       | Rename definition-vs-live-entity variables                      |
-| L6  | WP3           | Fable        | Eager coercion; no side effects in `device_info` getter         |
-| L7  | WP7           | Fable        | Adopt `extra_restore_state_data` end to end                     |
-| L8  | WP6           | Opus         | Threshold sensor merges `fixed_attributes`                      |
-| L9  | WP4+WP5       | Opus         | Unregister services/listeners/websocket on unload               |
-| L10 | WP8b          | Haiku        | Fire `servent.core_reloaded` only on actual reload              |
-| L11 | WP3           | Fable        | Disappears with `data_carriers.py`                              |
-| S1  | WP4           | Opus         | Registrar state onto `entry.runtime_data`; kill singleton       |
-| S2  | WP5           | Opus         | Extract `services.py` per HA convention                         |
-| S3  | WP6           | Opus         | Two-step lifecycle: `__init__` + `apply_config`                 |
-| S4  | WP6           | Opus         | Base class owns attribute merge + restore; one platform hook    |
-| S5  | WP4+WP5       | Opus         | Separate definition store from entity factory                   |
-| S6  | WP3           | Fable        | Replace `data_carriers.py` with `servents-data-model`           |
+| ID  | Package      | Model        | Fix (short)                                                    |
+| --- | ------------ | ------------ | -------------------------------------------------------------- |
+| H1  | WP1a         | Haiku        | Delete the never-set `hass.data[DOMAIN]` pop in unload         |
+| H2  | WP1b         | Sonnet       | Filter cleanup candidates by identifier domain, not value      |
+| H3  | WP7          | Fable        | Class-level `_unrecorded_attributes` so it actually applies    |
+| H4  | WP7          | Fable        | Restore only ServEnts-owned attrs; `fixed_attributes` win      |
+| H5  | WP2+WP3      | Sonnet       | Drop `pytz`; declare runtime deps in `manifest.json`           |
+| H6  | WP6          | Opus         | Apply new threshold params on re-create                        |
+| H7  | WP5          | Opus         | Proper error types; type-conflict path stays non-fatal         |
+| H8  | WP1b+WP3     | Sonnet+Fable | Coerce `device_definition` (stopgap), then native `from_dict`  |
+| M1  | WP1a         | Haiku        | `is not None` checks for number min/max/step                   |
+| M2  | WP6          | Opus         | Button `update_state` applies attributes, not silent no-op     |
+| M3  | WP8b         | Haiku        | Document frozen `sensor-` prefix in code (no behavior change)  |
+| M4  | WP8a         | Sonnet       | DATE class emits `date`; accept float epochs                   |
+| M5  | WP4          | Opus         | Key builders by type object; align with registration check     |
+| M6  | WP4          | Opus         | Stop hard-setting `is_hass_up=True` on registrar reset         |
+| M7  | WP4          | Opus         | Single "HASS is up" tracking path, with unsubscribe handles    |
+| M8  | WP3+WP5      | Fable+Opus   | Parse-time validation via data model + top-level `vol.Schema`  |
+| M9  | WP3          | Fable        | No mutation of nested `ServiceCall.data`; fixed by `from_dict` |
+| M10 | WP2+WP5+WP8a | Sonnet+Opus  | Modern HA APIs: async setup/register, config-flow, manifest    |
+| M11 | WP4          | Opus         | No duplicate hass-up entity on config-entry reload             |
+| L1  | WP8b         | Haiku        | Fix copy-paste strings (services.yaml header, docstring)       |
+| L2  | WP2          | Sonnet       | Align `manifest.json` / `pyproject.toml` versions              |
+| L3  | WP8b         | Haiku        | Remove dead code still remaining after WP3–WP7                 |
+| L4  | WP8b         | Haiku        | Relative imports everywhere                                    |
+| L5  | WP8a         | Sonnet       | Rename definition-vs-live-entity variables                     |
+| L6  | WP3          | Fable        | Eager coercion; no side effects in `device_info` getter        |
+| L7  | WP7          | Fable        | Adopt `extra_restore_state_data` end to end                    |
+| L8  | WP6          | Opus         | Threshold sensor merges `fixed_attributes`                     |
+| L9  | WP4+WP5      | Opus         | Unregister services/listeners/websocket on unload              |
+| L10 | WP8b         | Haiku        | Fire `servent.core_reloaded` only on actual reload             |
+| L11 | WP3          | Fable        | Disappears with `data_carriers.py`                             |
+| S1  | WP4          | Opus         | Registrar state onto `entry.runtime_data`; kill singleton      |
+| S2  | WP5          | Opus         | Extract `services.py` per HA convention                        |
+| S3  | WP6          | Opus         | Two-step lifecycle: `__init__` + `apply_config`                |
+| S4  | WP6          | Opus         | Base class owns attribute merge + restore; one platform hook   |
+| S5  | WP4+WP5      | Opus         | Separate definition store from entity factory                  |
+| S6  | WP3          | Fable        | Replace `data_carriers.py` with `servents-data-model`          |
 
 ---
 

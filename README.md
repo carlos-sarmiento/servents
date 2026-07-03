@@ -29,6 +29,8 @@ need for manually configuring helpers in the HA UI.
 
 ## Installation
 
+ServEnts can be installed through HACS or copied manually into Home Assistant.
+
 ### HACS (Recommended)
 
 1. Make sure [HACS](https://hacs.xyz/) is installed in your Home Assistant
@@ -39,7 +41,7 @@ need for manually configuring helpers in the HA UI.
    repositories**
 5. Add the following repository URL:
 
-   ```
+   ```text
    https://github.com/carlos-sarmiento/servents
    ```
 

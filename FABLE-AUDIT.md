@@ -94,6 +94,9 @@ single Domovoy-side edit.
 
 ## High severity
 
+Issues that can crash the integration, corrupt behavior, or break primary
+Domovoy workflows.
+
 ### H1. `async_unload_entry` always crashes — `hass.data[DOMAIN]` is never set
 
 `__init__.py:146` pops from `hass.data[DOMAIN]`, but nothing in the codebase
@@ -152,7 +155,7 @@ internal — not worth it; recording them costs a little disk, not lost data.
 Restart survival comes from `extra_restore_state_data` (L7), independent of
 the recorder.
 
-### H4. `restore_attributes` pollutes entities with the full historical attribute set
+### H4. `restore_attributes` restores historical HA attributes
 
 `entity.py:86-89`:
 
@@ -182,7 +185,7 @@ current `fixed_attributes` and `servent_id` merged last (constraint 1).
 Legacy pre-WP7 stored data has no such key and is deliberately not restored
 (it was never written by the integration anyway).
 
-### H5. Dependency declarations are inverted: `pytz` used but not declared, `servents-data-model` declared but never imported
+### H5. Dependency declarations are inverted
 
 - `sensor.py:3` imports `pytz`, but `manifest.json` has no `requirements`
   key. `pytz` is **not** a Home Assistant core dependency (it's only present
@@ -248,7 +251,7 @@ must stay non-fatal; improve it to a structured warning, don't promote it to
 an error. Raising proper error types is only safe on paths Domovoy cannot
 trigger (missing/empty `entities`, malformed definitions). **Fixed** in WP5.
 
-### H8. The production wire format bypasses device coercion; `cleanup_devices` crashes on it
+### H8. Production wire format bypasses device coercion
 
 There are two names for the device payload, and the integration only handles
 one of them eagerly:
@@ -292,6 +295,8 @@ supersedes and removes the WP1b stopgap.
 
 ## Medium severity
 
+Issues that produce incorrect entity behavior or preserve confusing contracts.
+
 ### M1. Falsy checks drop legitimate `0` values for numbers
 
 `number.py:43-50` uses `if self.servent_config.max_value:` (etc.), so
@@ -323,7 +328,10 @@ buttons, selects, and binary sensors alike (pinned in
 per platform, but it makes registry entries confusing and can't be changed
 later without orphaning every existing entity (unique_id changes create new
 registry entries). Worth noting explicitly as a constraint for the refactor:
-**this prefix must be preserved** to avoid breaking existing installs. **Fixed** in WP8b (documented in code with a comment at `entity.py:86-90` pinning the frozen prefix as wire format; the value is unchanged and `test_unique_id_uses_sensor_prefix_for_all_types` still passes).
+**this prefix must be preserved** to avoid breaking existing installs. **Fixed**
+in WP8b (documented in code with a comment at `entity.py:86-90` pinning the
+frozen prefix as wire format; the value is unchanged and
+`test_unique_id_uses_sensor_prefix_for_all_types` still passes).
 
 ### M4. `date` device class produces a datetime, not a date
 
@@ -332,7 +340,8 @@ and `DATE` classes. For `SensorDeviceClass.DATE`, HA serializes with
 `value.isoformat()` expecting a `date`; a `datetime` yields
 `"2023-11-14T22:13:20+00:00"` as the state of a date sensor. Use
 `.date()` for the DATE branch. Also, `int(state)` rejects float-string
-epochs (`"1700000000.5"` → `ValueError`) and truncates sub-second precision. **Fixed** in WP8a.
+epochs (`"1700000000.5"` → `ValueError`) and truncates sub-second precision.
+**Fixed** in WP8a.
 
 ### M5. Builder dispatch by `str(type(...))` with exact-match only
 
@@ -412,7 +421,7 @@ legacy `device_config` alias is handled with a shallow copy.
 
 | Location             | Issue                                                                                                                                                                                                                                                      |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`. **Fixed** in WP8b.                                                                                                                                            |
+| `__init__.py:79`     | `_LOGGER.warn` is deprecated (emits a `DeprecationWarning` in the test run); use `warning`. **Fixed** in WP8b.                                                                                                                                             |
 | `__init__.py:84,105` | Sync `setup` + `hass.services.register` in a config-flow integration; use `async_setup` + `async_register`. **Fixed** in WP5 (sync `setup` deleted; services registered via `hass.services.async_register` in `async_setup_entry`, unregistered on unload) |
 | `__init__.py:84`     | `setup`'s second parameter is annotated `ConfigEntry`, but HA passes the YAML config dict. **Fixed** in WP5 (the sync `setup` is gone; registration moved to `async_setup_entry(hass, entry)`, no mis-annotated config param)                              |
 | `config_flow.py:6`   | `@config_entries.HANDLERS.register(DOMAIN)` is the legacy pattern; use `class ...(ConfigFlow, domain=DOMAIN)` **Fixed** in WP8a.                                                                                                                           |
@@ -436,7 +445,8 @@ its entities, so the fresh add carries no duplicate unique_id.
 
 - **L1. Copy-paste artifacts.** `services.yaml:1` says "available Irrigation
   Unlimited services"; `websocket_hass_is_up`'s docstring is "Handle
-  search." (`__init__.py:44`). **Fixed** in WP8b (services.yaml header corrected to "ServEnts services"; the docstring was already fixed in WP5).
+  search." (`__init__.py:44`). **Fixed** in WP8b (services.yaml header
+  corrected to "ServEnts services"; the docstring was already fixed in WP5).
 - **L2. Version mismatch.** `manifest.json` says `0.1.0`; `pyproject.toml`
   says `0.6.0`. **Fixed** in WP2.
 - **L3. Dead code.** `ServentExtraData` (`entity.py:72-78`) is never used
@@ -444,10 +454,14 @@ its entities, so the fresh add carries no duplicate unique_id.
   `self._attr_device_info = None` (`entity.py:45`) is dead because the
   `device_info` property is overridden; `ServEntSelect.options` and the
   `name` properties on `ServEntButton`/`ServEntThresholdBinarySensor`
-  re-implement what the `_attr_*` defaults already do. **Fixed** in WP8b (removed unused `_LOGGER` from `entity.py` and `__init__.py`; removed redundant `options` property override from `select.py`; `ServentExtraData` is live in WP7 and retained).
+  re-implement what the `_attr_*` defaults already do. **Fixed** in WP8b
+  (removed unused `_LOGGER` from `entity.py` and `__init__.py`; removed
+  redundant `options` property override from `select.py`; `ServentExtraData`
+  is live in WP7 and retained).
 - **L4. Import-style inconsistency.** `__init__.py:14` and `number.py:7-8`
   import via the absolute `custom_components.servents.` path while every
-  other module uses relative imports. Pick one (relative). **Fixed** in WP8b (verified: no absolute imports remain).
+  other module uses relative imports. Pick one (relative). **Fixed** in WP8b
+  (verified: no absolute imports remain).
 - **L5. Naming.** `get_all_entities()` / `entities` variables hold
   *definitions*, not entities; `live_entity = ...get_all_entities()`
   (`__init__.py:92`) is definitions too. The definition/live-entity
@@ -489,7 +503,8 @@ its entities, so the fresh add carries no duplicate unique_id.
   both are registered in `async_setup_entry` so registration and teardown
   pair.
 - **L10. `hass.bus.async_fire("servent.core_reloaded")`** fires on *every*
-  setup, including first install — the name overpromises. **Fixed** in WP8b (tracks already-set-up entry_ids; fires event only on actual reload).
+  setup, including first install — the name overpromises. **Fixed** in WP8b
+  (tracks already-set-up entry_ids; fires event only on actual reload).
 - **L11. `inspect.signature` on every build** (`data_carriers.py:143`) —
   trivial to cache per class; only matters if entity creation is chatty.
   **Fixed** in WP3: `clean_params_and_build` is gone with
