@@ -357,3 +357,15 @@ class TestCleanupDevices:
         stale = MagicMock(id="stale-entry", identifiers={(DOMAIN, "device-stale")})
 
         assert await self.run_cleanup([core, stale]) == {"stale-entry"}
+
+    async def test_cleanup_ignores_foreign_identifier_when_matching_live_device_id(self, registrar):
+        registrar.register_definition(
+            make_definition("sensor", "s1", device_config={"device_id": "live", "name": "Live"})
+        )
+
+        stale = MagicMock(
+            id="stale-entry",
+            identifiers={(DOMAIN, "device-stale"), ("other_domain", "device-live")},
+        )
+
+        assert await self.run_cleanup([stale], registrar) == {"stale-entry"}

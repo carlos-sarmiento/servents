@@ -135,7 +135,7 @@ async def handle_cleanup_devices(call: ServiceCall) -> None:
 
     for device_entry in devices:
         for identifier in device_entry.identifiers:
-            if identifier[1] in device_ids:
+            if identifier[0] == DOMAIN and identifier[1] in device_ids:
                 break
         else:
             device_registry.async_remove_device(device_entry.id)
