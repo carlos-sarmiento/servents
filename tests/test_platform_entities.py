@@ -7,7 +7,7 @@ import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.button import ButtonDeviceClass
 from homeassistant.components.number import NumberDeviceClass
-from homeassistant.components.number.const import NumberMode
+from homeassistant.components.number.const import DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE, DEFAULT_STEP, NumberMode
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.switch import SwitchDeviceClass
 
@@ -171,20 +171,30 @@ class TestServEntNumber:
         # min_value=0, max_value=0, and step=0 are falsy but are legitimate values.
         # They are now correctly applied (0.0 checks use `is not None` instead of truthiness).
         ent = ServEntNumber(make_definition("number", "n1", mode="auto", min_value=0.0, max_value=0.0, step=0.0))
-        assert ent._attr_native_min_value == 0.0
-        assert ent._attr_native_max_value == 0.0
-        assert ent._attr_native_step == 0.0
+        assert ent.native_min_value == 0.0
+        assert ent.native_max_value == 0.0
+        assert ent.native_step == 0.0
 
     def test_reconfigure_clears_omitted_bounds_and_step(self):
         ent = ServEntNumber(
             make_definition("number", "n1", mode="auto", min_value=1.0, max_value=10.0, step=0.5)
         )
+        assert ent.native_min_value == 1.0
+        assert ent.native_max_value == 10.0
+        assert ent.native_step == 0.5
 
         ent.apply_config(make_definition("number", "n1", mode="auto"))
 
-        assert ent._attr_native_min_value is None
-        assert ent._attr_native_max_value is None
-        assert ent._attr_native_step is None
+        assert ent.native_min_value == DEFAULT_MIN_VALUE
+        assert ent.native_max_value == DEFAULT_MAX_VALUE
+        assert ent.native_step is None
+        assert ent.step == DEFAULT_STEP
+
+        ent.apply_config(make_definition("number", "n1", mode="auto", min_value=0.0, max_value=0.0, step=0.0))
+
+        assert ent.native_min_value == 0.0
+        assert ent.native_max_value == 0.0
+        assert ent.native_step == 0.0
 
     def test_set_native_value(self):
         ent = ServEntNumber(make_definition("number", "n1", mode="auto"))

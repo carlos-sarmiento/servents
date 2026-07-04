@@ -9,6 +9,15 @@ from servents.data_model.entity_configs import NumberConfig
 from .entity import ServEntEntity, register_platform_builder
 
 
+def _set_optional_float_attr(entity: object, attr_name: str, value: float | None) -> None:
+    if value is None:
+        if hasattr(entity, attr_name):
+            delattr(entity, attr_name)
+        return
+
+    setattr(entity, attr_name, value)
+
+
 async def async_setup_entry(
     _hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -34,8 +43,8 @@ class ServEntNumber(ServEntEntity[NumberConfig], RestoreNumber):
         if self.servent_config.mode:
             self._attr_mode = NumberMode(self.servent_config.mode)
 
-        self._attr_native_max_value = self.servent_config.max_value
-        self._attr_native_min_value = self.servent_config.min_value
+        _set_optional_float_attr(self, "_attr_native_max_value", self.servent_config.max_value)
+        _set_optional_float_attr(self, "_attr_native_min_value", self.servent_config.min_value)
         self._attr_native_step = self.servent_config.step
 
     def _write_native_state(self, state):
