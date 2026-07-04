@@ -54,13 +54,17 @@ def parse_entity_config(data: Mapping[str, Any]) -> EntityConfig:
     except ValueError:
         raise ServiceValidationError(f"entity type: {entity_type_raw} is not supported") from None
 
+    config_class = ENTITY_TYPE_TO_CONFIG_CLASS.get(entity_type)
+    if config_class is None:
+        raise ServiceValidationError(f"entity type: {entity_type_raw} is not supported")
+
     # Legacy alias: services.yaml historically documented the nested device
     # payload as `device_config`. Domovoy sends `device_definition`.
     if data.get("device_config") and not data.get("device_definition"):
         data = {**data, "device_definition": data["device_config"]}
 
     try:
-        return from_dict(ENTITY_TYPE_TO_CONFIG_CLASS[entity_type], data)
+        return from_dict(config_class, data)
     except (SerdeError, ValueError) as err:
         raise ServiceValidationError(f"Invalid {entity_type.value} entity definition: {err}") from err
 

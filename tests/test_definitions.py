@@ -63,8 +63,30 @@ class TestParseEntityConfig:
         assert result.servent_id == "x"
         assert result.name == "X"
 
-    def test_dispatch_map_covers_every_entity_type(self):
-        assert set(ENTITY_TYPE_TO_CONFIG_CLASS.keys()) == set(EntityType)
+    def test_dispatch_map_covers_currently_implemented_entity_types(self):
+        assert set(ENTITY_TYPE_TO_CONFIG_CLASS.keys()) == {
+            EntityType.SENSOR,
+            EntityType.BINARY_SENSOR,
+            EntityType.THRESHOLD_BINARY_SENSOR,
+            EntityType.SWITCH,
+            EntityType.NUMBER,
+            EntityType.BUTTON,
+            EntityType.SELECT,
+        }
+
+    def test_staged_entity_types_fail_cleanly_until_platforms_are_added(self):
+        for entity_type in set(EntityType) - set(ENTITY_TYPE_TO_CONFIG_CLASS):
+            with pytest.raises(
+                ServiceValidationError,
+                match=f"entity type: {entity_type.value} is not supported",
+            ):
+                parse_entity_config(
+                    {
+                        "entity_type": entity_type.value,
+                        "servent_id": "x",
+                        "name": "X",
+                    }
+                )
 
     def test_extraneous_keys_are_ignored(self):
         # pyserde silently ignores unknown keys — same lenience as the old

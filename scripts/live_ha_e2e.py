@@ -4,7 +4,7 @@ This script intentionally uses Home Assistant's normal custom integration
 loading path:
 
 - copy custom_components/servents into a disposable /config/custom_components
-- preinstall the local servents-data-model wheel into /config/deps
+- preinstall the local servents-data-model wheel into a mounted Python user-site
 - leave the integration manifest unchanged
 - create the config entry and exercise services through HA's public APIs
 """
@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE_ROOT = ROOT / ".tmp" / "live-ha"
 CONFIG_DIR = LIVE_ROOT / "config"
 WHEELS_DIR = LIVE_ROOT / "wheels"
+USER_SITE_DIR = LIVE_ROOT / "user-site"
 COMPONENT_SRC = ROOT / "custom_components" / "servents"
 COMPONENT_DST = CONFIG_DIR / "custom_components" / "servents"
 DATA_MODEL_DIR = ROOT / "servents-data-model"
@@ -121,6 +122,7 @@ def prepare_runtime(args: argparse.Namespace) -> None:
 
     (CONFIG_DIR / "custom_components").mkdir(parents=True)
     WHEELS_DIR.mkdir(parents=True)
+    USER_SITE_DIR.mkdir(parents=True)
 
     shutil.copytree(
         COMPONENT_SRC,
@@ -193,29 +195,27 @@ def build_data_model_wheel() -> Path:
 
 
 def compute_container_user_site(args: argparse.Namespace) -> str:
-    """Compute HA's /config/deps user-site path inside the container."""
+    """Compute the Python user-site path Home Assistant checks in the container."""
     result = docker_run_rm(
         args,
-        "-v",
-        docker_volume(CONFIG_DIR, "/config", args.volume_suffix),
         args.image,
         "sh",
         "-c",
-        "PYTHONUSERBASE=/config/deps python -m site --user-site",
+        "python -m site --user-site",
     )
     user_site = result.stdout.strip()
-    if not user_site.startswith("/config/deps/"):
-        raise LiveHAError(f"Unexpected Home Assistant deps user-site: {user_site}")
+    if not user_site.startswith("/"):
+        raise LiveHAError(f"Unexpected Home Assistant user-site: {user_site}")
     return user_site
 
 
 def preinstall_data_model(args: argparse.Namespace, wheel: Path) -> None:
-    """Install the local data-model wheel into HA's config deps user-site."""
+    """Install the local data-model wheel into HA's mounted user-site."""
     user_site = compute_container_user_site(args)
     docker_run_rm(
         args,
         "-v",
-        docker_volume(CONFIG_DIR, "/config", args.volume_suffix),
+        docker_volume(USER_SITE_DIR, user_site, args.volume_suffix),
         "-v",
         docker_volume(WHEELS_DIR, "/wheels", args.volume_suffix),
         args.image,
@@ -262,6 +262,8 @@ def start_home_assistant(args: argparse.Namespace, container_name: str) -> None:
             container_name,
             "-v",
             docker_volume(CONFIG_DIR, "/config", args.volume_suffix),
+            "-v",
+            docker_volume(USER_SITE_DIR, compute_container_user_site(args), args.volume_suffix),
             "-p",
             "127.0.0.1::8123",
             args.image,

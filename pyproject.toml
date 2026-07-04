@@ -5,7 +5,10 @@ description = "ServEnts - Service Defined Entities"
 authors = [{ name = "Carlos G. Sarmiento", email = "carlos@sarmiento.io" }]
 requires-python = ">=3.13.2"
 readme = "README.md"
-dependencies = ["servents-data-model>=0.6.0"]
+dependencies = ["servents-data-model>=0.10.0"]
+
+[tool.uv.sources]
+servents-data-model = { path = "servents-data-model" }
 
 [dependency-groups]
 dev = ["homeassistant>=2025.11.0", "pytest>=8.0", "pytest-asyncio>=0.24"]
