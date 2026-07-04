@@ -25,7 +25,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 
-from .const import DOMAIN
+from .const import CORE_DEVICE_ID, DOMAIN
 from .definitions import get_device_id, parse_entity_config, parse_update_entity
 from .registrar import ServentDefinitionRegistrar, get_registrar_from_hass
 
@@ -125,7 +125,11 @@ async def handle_cleanup_devices(call: ServiceCall) -> None:
 
     definitions = registrar.get_all_definitions()
 
-    device_ids = set([get_device_id(x.device_definition) for x in definitions if x.device_definition])
+    device_ids = {CORE_DEVICE_ID} | {
+        get_device_id(definition.device_definition)
+        for definition in definitions
+        if definition.device_definition
+    }
 
     devices = [d for d in device_registry.devices.values() if any([a[0] == DOMAIN for a in d.identifiers])]
 

@@ -14,6 +14,7 @@ from custom_components.servents import (
     handle_update_entity,
     register_and_update_all_entities,
 )
+from custom_components.servents.const import CORE_DEVICE_ID, DOMAIN
 from custom_components.servents.sensor import ServEntSensor
 from custom_components.servents.services import handle_cleanup_devices
 from tests.conftest import FakeServiceCall, make_definition
@@ -350,3 +351,9 @@ class TestCleanupDevices:
         # for removal just because its identifier value contains "servent".
         foreign = MagicMock(id="foreign-entry", identifiers={("zwave", "my-servent-node")})
         assert await self.run_cleanup([foreign]) == set()
+
+    async def test_cleanup_preserves_core_device_while_removing_stale_dynamic_device(self):
+        core = MagicMock(id="core-entry", identifiers={(DOMAIN, CORE_DEVICE_ID)})
+        stale = MagicMock(id="stale-entry", identifiers={(DOMAIN, "device-stale")})
+
+        assert await self.run_cleanup([core, stale]) == {"stale-entry"}

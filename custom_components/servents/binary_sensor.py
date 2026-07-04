@@ -15,6 +15,7 @@ from servents.data_model.entity_configs import (
     ThresholdBinarySensorConfig,
 )
 
+from .const import CORE_DEVICE_CONFIG_ID
 from .definitions import get_device_info
 from .entity import ServEntEntity, register_platform_builder
 from .registrar import ServentDefinitionRegistrar, get_registrar_for_entry
@@ -82,7 +83,7 @@ class ServEntHassIsReady(BinarySensorEntity):
 
         self._attr_device_info = get_device_info(
             DeviceConfig(
-                device_id="servent_core_device",
+                device_id=CORE_DEVICE_CONFIG_ID,
                 name="Servents Core",
                 manufacturer="Servents",
             )
