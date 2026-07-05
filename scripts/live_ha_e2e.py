@@ -47,6 +47,8 @@ EVENT_SERVENT_ID = "live-ha-event"
 LIGHT_SERVENT_ID = "live-ha-light"
 COVER_SERVENT_ID = "live-ha-cover"
 FAN_SERVENT_ID = "live-ha-fan"
+CLIMATE_SERVENT_ID = "live-ha-climate"
+CLIMATE_RANGE_SERVENT_ID = "live-ha-climate-range"
 AUTH_USER = "servents-live"
 AUTH_PASSWORD = "servents-live-password"
 CLIENT_ID = "http://localhost/"
@@ -978,6 +980,125 @@ def run_smoke(base_url: str, token: str) -> str:
     fan_state = wait_for_servent_entity(base_url, token, FAN_SERVENT_ID, "on", 30)
     if (fan_state.get("attributes") or {}).get("percentage") != 55:
         raise LiveHAError(f"Fan optimistic percentage was not applied: {fan_state}")
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "climate",
+                    "servent_id": CLIMATE_SERVENT_ID,
+                    "name": "Live HA Climate",
+                    "default_state": "off",
+                    "hvac_modes": ["off", "heat"],
+                    "supports_target_temperature": True,
+                    "supports_target_temperature_range": False,
+                    "min_temp": 15,
+                    "max_temp": 25,
+                    "temp_step": 0.5,
+                    "fan_modes": ["auto", "high"],
+                    "preset_modes": ["eco", "boost"],
+                    "swing_modes": ["off", "on"],
+                    "temperature_unit": "C",
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "7"},
+                },
+                {
+                    "entity_type": "climate",
+                    "servent_id": CLIMATE_RANGE_SERVENT_ID,
+                    "name": "Live HA Climate Range",
+                    "default_state": {
+                        "hvac_mode": "heat_cool",
+                        "target_temp_low": 19,
+                        "target_temp_high": 24,
+                    },
+                    "hvac_modes": ["off", "heat_cool"],
+                    "supports_target_temperature": False,
+                    "supports_target_temperature_range": True,
+                    "min_temp": 15,
+                    "max_temp": 30,
+                    "temp_step": 0.5,
+                    "temperature_unit": "C",
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "7"},
+                },
+            ]
+        },
+    )
+    climate_state = wait_for_servent_entity(base_url, token, CLIMATE_SERVENT_ID, "off", 30)
+    climate_range_state = wait_for_servent_entity(
+        base_url,
+        token,
+        CLIMATE_RANGE_SERVENT_ID,
+        "heat_cool",
+        30,
+    )
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "climate",
+        "set_hvac_mode",
+        {"entity_id": climate_state["entity_id"], "hvac_mode": "heat"},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": CLIMATE_SERVENT_ID,
+            "entity_type": "climate",
+            "command": {"hvac_mode": "heat"},
+        },
+    )
+    wait_for_servent_entity(base_url, token, CLIMATE_SERVENT_ID, "heat", 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "climate",
+        "set_temperature",
+        {"entity_id": climate_state["entity_id"], "temperature": 22.5},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": CLIMATE_SERVENT_ID,
+            "entity_type": "climate",
+            "command": {"target_temperature": 22.5},
+        },
+    )
+    wait_for_servent_attributes(base_url, token, CLIMATE_SERVENT_ID, {"temperature": 22.5}, 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "climate",
+        "set_temperature",
+        {"entity_id": climate_range_state["entity_id"], "target_temp_low": 20, "target_temp_high": 26},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": CLIMATE_RANGE_SERVENT_ID,
+            "entity_type": "climate",
+            "command": {"target_temp_low": 20.0, "target_temp_high": 26.0},
+        },
+    )
+    wait_for_servent_attributes(
+        base_url,
+        token,
+        CLIMATE_RANGE_SERVENT_ID,
+        {"target_temp_low": 20.0, "target_temp_high": 26.0},
+        30,
+    )
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))

@@ -13,6 +13,7 @@ from homeassistant.const import Platform
 from servents.data_model.entity_configs import (
     BinarySensorConfig,
     ButtonConfig,
+    ClimateConfig,
     CoverConfig,
     DateConfig,
     DatetimeConfig,
@@ -53,8 +54,8 @@ class TestParseEntityConfig:
             parse_entity_config({"entity_type": "", "servent_id": "x", "name": "X"})
 
     def test_unsupported_entity_type_raises(self):
-        with pytest.raises(ServiceValidationError, match="entity type: climate is not supported"):
-            parse_entity_config({"entity_type": "climate", "servent_id": "x", "name": "X"})
+        with pytest.raises(ServiceValidationError, match="entity type: lock is not supported"):
+            parse_entity_config({"entity_type": "lock", "servent_id": "x", "name": "X"})
 
     @pytest.mark.parametrize(
         ("payload_extra", "entity_type", "expected_class"),
@@ -66,6 +67,7 @@ class TestParseEntityConfig:
             ({"mode": "auto"}, "number", NumberConfig),
             ({"event": "e"}, "button", ButtonConfig),
             ({"options": ["a"]}, "select", SelectConfig),
+            ({"hvac_modes": ["off", "heat"]}, "climate", ClimateConfig),
             ({}, "light", LightConfig),
             ({}, "cover", CoverConfig),
             ({}, "fan", FanConfig),
@@ -92,6 +94,7 @@ class TestParseEntityConfig:
             EntityType.NUMBER,
             EntityType.BUTTON,
             EntityType.SELECT,
+            EntityType.CLIMATE,
             EntityType.LIGHT,
             EntityType.COVER,
             EntityType.FAN,

@@ -18,6 +18,7 @@ from serde import SerdeError, from_dict
 from servents.data_model.entity_configs import (
     BinarySensorConfig,
     ButtonConfig,
+    ClimateConfig,
     CoverConfig,
     DateConfig,
     DatetimeConfig,
@@ -49,6 +50,7 @@ ENTITY_TYPE_TO_CONFIG_CLASS: dict[EntityType, type[EntityConfig]] = {
     EntityType.NUMBER: NumberConfig,
     EntityType.BUTTON: ButtonConfig,
     EntityType.SELECT: SelectConfig,
+    EntityType.CLIMATE: ClimateConfig,
     EntityType.LIGHT: LightConfig,
     EntityType.COVER: CoverConfig,
     EntityType.FAN: FanConfig,

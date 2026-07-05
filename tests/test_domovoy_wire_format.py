@@ -21,7 +21,7 @@ Notable properties of the format:
 from unittest.mock import MagicMock, patch
 
 import pytest
-from servents.data_model.entity_configs import CoverConfig, DeviceConfig, FanConfig, LightConfig, SensorConfig
+from servents.data_model.entity_configs import ClimateConfig, CoverConfig, DeviceConfig, FanConfig, LightConfig, SensorConfig
 
 from custom_components.servents import handle_create_entity, handle_update_entity
 from custom_components.servents.definitions import parse_entity_config
@@ -95,6 +95,27 @@ def domovoy_fan_payload() -> dict:
         "supports_percentage": True,
         "preset_modes": ["auto", "boost"],
         "optimistic": True,
+    }
+
+
+def domovoy_climate_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable climate."""
+    return {
+        "entity_type": "climate",
+        "servent_id": "my_app-climate",
+        "name": "Climate",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "hvac_modes": ["off", "heat"],
+        "supports_target_temperature": True,
+        "supports_target_temperature_range": False,
+        "min_temp": 15,
+        "max_temp": 25,
+        "temp_step": 0.5,
+        "temperature_unit": "C",
+        "optimistic": True,
+        "default_state": "off",
     }
 
 
@@ -184,6 +205,17 @@ class TestDomovoyPhase6CreateEntity:
         assert type(definition) is expected_class
         assert definition.optimistic is True
         assert definition.app_name == "my_app"
+
+
+class TestDomovoyPhase7CreateEntity:
+    def test_climate_payload_parses(self):
+        definition = parse_entity_config(domovoy_climate_payload())
+
+        assert type(definition) is ClimateConfig
+        assert definition.hvac_modes == ["off", "heat"]
+        assert definition.supports_target_temperature is True
+        assert definition.supports_target_temperature_range is False
+        assert definition.default_state == "off"
 
 
 class TestDomovoyUpdateState:

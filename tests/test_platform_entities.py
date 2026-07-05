@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.button import ButtonDeviceClass
+from homeassistant.components.climate import ClimateEntityFeature, HVACAction, HVACMode
 from homeassistant.components.cover import CoverDeviceClass, CoverEntityFeature, CoverState
 from homeassistant.components.event import EventDeviceClass
 from homeassistant.components.fan import FanEntityFeature
@@ -15,6 +16,7 @@ from homeassistant.components.number.const import DEFAULT_MAX_VALUE, DEFAULT_MIN
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.components.text import TextMode
+from homeassistant.const import UnitOfTemperature
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.servents.binary_sensor import (
@@ -23,6 +25,7 @@ from custom_components.servents.binary_sensor import (
     ServEntThresholdBinarySensor,
 )
 from custom_components.servents.button import ServEntButton
+from custom_components.servents.climate import ServEntClimate
 from custom_components.servents.cover import ServEntCover
 from custom_components.servents.date import ServEntDateEntity
 from custom_components.servents.datetime import ServEntDatetimeEntity
@@ -493,6 +496,231 @@ class TestServEntFan:
         )
         assert ent._attr_percentage == 0
         assert ent._attr_preset_mode is None
+
+
+class TestServEntClimate:
+    def test_config_single_setpoint(self):
+        ent = ServEntClimate(
+            make_definition(
+                "climate",
+                "climate1",
+                hvac_modes=["off", "heat"],
+                min_temp=15,
+                max_temp=25,
+                temp_step=0.5,
+                fan_modes=["auto", "high"],
+                preset_modes=["eco", "boost"],
+                swing_modes=["off", "on"],
+                temperature_unit="F",
+            )
+        )
+
+        assert ent.hvac_modes == [HVACMode.OFF, HVACMode.HEAT]
+        assert ent.temperature_unit is UnitOfTemperature.FAHRENHEIT
+        assert ent.min_temp == 15.0
+        assert ent.max_temp == 25.0
+        assert ent.target_temperature_step == 0.5
+        assert ent.fan_modes == ["auto", "high"]
+        assert ent.preset_modes == ["eco", "boost"]
+        assert ent.swing_modes == ["off", "on"]
+        assert ent.supported_features == (
+            ClimateEntityFeature.TURN_ON
+            | ClimateEntityFeature.TURN_OFF
+            | ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.FAN_MODE
+            | ClimateEntityFeature.PRESET_MODE
+            | ClimateEntityFeature.SWING_MODE
+        )
+
+    def test_config_range_setpoint(self):
+        ent = ServEntClimate(
+            make_definition(
+                "climate",
+                "climate1",
+                hvac_modes=["off", "heat_cool"],
+                supports_target_temperature=False,
+                supports_target_temperature_range=True,
+            )
+        )
+
+        assert ent.supported_features & ClimateEntityFeature.TARGET_TEMPERATURE_RANGE
+        assert not ent.supported_features & ClimateEntityFeature.TARGET_TEMPERATURE
+
+    def test_string_state_sets_hvac_mode(self):
+        ent = ServEntClimate(make_definition("climate", "climate1", hvac_modes=["off", "heat"]))
+
+        ent.set_new_state_and_attributes("heat", None)
+
+        assert ent.hvac_mode is HVACMode.HEAT
+        assert ent.state == "heat"
+
+    def test_dict_state_applies_all_fields(self):
+        ent = ServEntClimate(
+            make_definition(
+                "climate",
+                "climate1",
+                hvac_modes=["off", "heat"],
+                fan_modes=["auto"],
+                preset_modes=["eco"],
+                swing_modes=["on"],
+            )
+        )
+
+        ent.set_new_state_and_attributes(
+            {
+                "hvac_mode": "heat",
+                "target_temperature": 22.5,
+                "current_temperature": 19.5,
+                "current_humidity": 45,
+                "fan_mode": "auto",
+                "preset_mode": "eco",
+                "swing_mode": "on",
+                "hvac_action": "heating",
+            },
+            None,
+        )
+
+        assert ent._attr_hvac_mode is HVACMode.HEAT
+        assert ent._attr_target_temperature == 22.5
+        assert ent._attr_current_temperature == 19.5
+        assert ent._attr_current_humidity == 45.0
+        assert ent._attr_fan_mode == "auto"
+        assert ent._attr_preset_mode == "eco"
+        assert ent._attr_swing_mode == "on"
+        assert ent._attr_hvac_action is HVACAction.HEATING
+
+    def test_partial_state_update_preserves_absent_fields(self):
+        ent = ServEntClimate(make_definition("climate", "climate1", hvac_modes=["off", "heat"]))
+        ent.set_new_state_and_attributes({"hvac_mode": "heat", "target_temperature": 21.0}, None)
+
+        ent.set_new_state_and_attributes({"current_temperature": 19.0}, None)
+
+        assert ent._attr_hvac_mode is HVACMode.HEAT
+        assert ent._attr_target_temperature == 21.0
+        assert ent._attr_current_temperature == 19.0
+
+    def test_range_state(self):
+        ent = ServEntClimate(
+            make_definition(
+                "climate",
+                "climate1",
+                hvac_modes=["off", "heat_cool"],
+                supports_target_temperature=False,
+                supports_target_temperature_range=True,
+            )
+        )
+
+        ent.set_new_state_and_attributes({"target_temp_low": 19, "target_temp_high": 24}, None)
+
+        assert ent._attr_target_temperature_low == 19.0
+        assert ent._attr_target_temperature_high == 24.0
+
+    async def test_set_hvac_mode_fires_command_without_optimistic_state(self):
+        ent = ServEntClimate(make_definition("climate", "climate1", hvac_modes=["off", "heat"], default_state="off"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_hvac_mode(HVACMode.HEAT)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "climate1", "entity_type": "climate", "command": {"hvac_mode": "heat"}},
+        )
+        assert ent._attr_hvac_mode is HVACMode.OFF
+        ent.verified_schedule_update_ha_state.assert_not_called()
+
+    async def test_set_temperature_applies_optimistic_state(self):
+        ent = ServEntClimate(
+            make_definition("climate", "climate1", hvac_modes=["off", "heat"], optimistic=True)
+        )
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_temperature(temperature=22.5, hvac_mode=HVACMode.HEAT)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {
+                "servent_id": "climate1",
+                "entity_type": "climate",
+                "command": {"target_temperature": 22.5, "hvac_mode": "heat"},
+            },
+        )
+        assert ent._attr_hvac_mode is HVACMode.HEAT
+        assert ent._attr_target_temperature == 22.5
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_set_range_temperature_fires_command(self):
+        ent = ServEntClimate(
+            make_definition(
+                "climate",
+                "climate1",
+                hvac_modes=["off", "heat_cool"],
+                supports_target_temperature=False,
+                supports_target_temperature_range=True,
+            )
+        )
+        ent.hass = MagicMock()
+
+        await ent.async_set_temperature(target_temp_low=19, target_temp_high=24)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {
+                "servent_id": "climate1",
+                "entity_type": "climate",
+                "command": {"target_temp_low": 19, "target_temp_high": 24},
+            },
+        )
+
+    async def test_mode_services_fire_commands(self):
+        ent = ServEntClimate(
+            make_definition(
+                "climate",
+                "climate1",
+                hvac_modes=["off", "heat"],
+                fan_modes=["auto"],
+                preset_modes=["eco"],
+                swing_modes=["on"],
+            )
+        )
+        ent.hass = MagicMock()
+
+        await ent.async_set_fan_mode("auto")
+        await ent.async_set_preset_mode("eco")
+        await ent.async_set_swing_mode("on")
+
+        ent.hass.bus.async_fire.assert_any_call(
+            "servent.entity_command",
+            {"servent_id": "climate1", "entity_type": "climate", "command": {"fan_mode": "auto"}},
+        )
+        ent.hass.bus.async_fire.assert_any_call(
+            "servent.entity_command",
+            {"servent_id": "climate1", "entity_type": "climate", "command": {"preset_mode": "eco"}},
+        )
+        ent.hass.bus.async_fire.assert_any_call(
+            "servent.entity_command",
+            {"servent_id": "climate1", "entity_type": "climate", "command": {"swing_mode": "on"}},
+        )
+
+    async def test_turn_on_off_resolve_hvac_mode_commands(self):
+        ent = ServEntClimate(
+            make_definition("climate", "climate1", hvac_modes=["off", "heat"], optimistic=True)
+        )
+        ent.hass = MagicMock()
+
+        await ent.async_turn_on()
+        await ent.async_turn_off()
+
+        ent.hass.bus.async_fire.assert_any_call(
+            "servent.entity_command",
+            {"servent_id": "climate1", "entity_type": "climate", "command": {"hvac_mode": "heat"}},
+        )
+        ent.hass.bus.async_fire.assert_any_call(
+            "servent.entity_command",
+            {"servent_id": "climate1", "entity_type": "climate", "command": {"hvac_mode": "off"}},
+        )
+        assert ent._attr_hvac_mode is HVACMode.OFF
 
 
 class TestServEntTextEntity:
