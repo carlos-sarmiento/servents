@@ -13,13 +13,18 @@ from homeassistant.const import Platform
 from servents.data_model.entity_configs import (
     BinarySensorConfig,
     ButtonConfig,
+    DateConfig,
+    DatetimeConfig,
     DeviceConfig,
     EntityConfig,
+    EventConfig,
     NumberConfig,
     SelectConfig,
     SensorConfig,
     SwitchConfig,
+    TextConfig,
     ThresholdBinarySensorConfig,
+    TimeConfig,
 )
 from servents.data_model.entity_types import EntityType
 
@@ -58,6 +63,11 @@ class TestParseEntityConfig:
             ({"mode": "auto"}, "number", NumberConfig),
             ({"event": "e"}, "button", ButtonConfig),
             ({"options": ["a"]}, "select", SelectConfig),
+            ({}, "text", TextConfig),
+            ({}, "date", DateConfig),
+            ({}, "time", TimeConfig),
+            ({}, "date_time", DatetimeConfig),
+            ({"event_types": ["pressed"]}, "event", EventConfig),
         ],
     )
     def test_maps_entity_type_to_config_class(self, payload_extra, entity_type, expected_class):
@@ -76,6 +86,11 @@ class TestParseEntityConfig:
             EntityType.NUMBER,
             EntityType.BUTTON,
             EntityType.SELECT,
+            EntityType.TEXT,
+            EntityType.DATE,
+            EntityType.TIME,
+            EntityType.DATETIME,
+            EntityType.EVENT,
         }
 
     def test_staged_entity_types_fail_cleanly_until_platforms_are_added(self):

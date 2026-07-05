@@ -33,10 +33,15 @@ WEBSOCKET_COMMAND = "servent/hass-state"
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.DATE,
+    Platform.DATETIME,
+    Platform.EVENT,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TEXT,
+    Platform.TIME,
 ]
 
 

@@ -18,13 +18,18 @@ from serde import SerdeError, from_dict
 from servents.data_model.entity_configs import (
     BinarySensorConfig,
     ButtonConfig,
+    DateConfig,
+    DatetimeConfig,
     DeviceConfig,
     EntityConfig,
+    EventConfig,
     NumberConfig,
     SelectConfig,
     SensorConfig,
     SwitchConfig,
+    TextConfig,
     ThresholdBinarySensorConfig,
+    TimeConfig,
 )
 from servents.data_model.entity_types import EntityType
 from servents.data_model.update_entity import ServentUpdateEntity
@@ -41,6 +46,11 @@ ENTITY_TYPE_TO_CONFIG_CLASS: dict[EntityType, type[EntityConfig]] = {
     EntityType.NUMBER: NumberConfig,
     EntityType.BUTTON: ButtonConfig,
     EntityType.SELECT: SelectConfig,
+    EntityType.TEXT: TextConfig,
+    EntityType.DATE: DateConfig,
+    EntityType.TIME: TimeConfig,
+    EntityType.DATETIME: DatetimeConfig,
+    EntityType.EVENT: EventConfig,
 }
 
 ENTITY_TYPE_TO_HA_DOMAIN: dict[EntityType, str] = {

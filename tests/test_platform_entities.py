@@ -1,15 +1,18 @@
 """Characterization tests for each platform's entity class."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.button import ButtonDeviceClass
+from homeassistant.components.event import EventDeviceClass
 from homeassistant.components.number import NumberDeviceClass
 from homeassistant.components.number.const import DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE, DEFAULT_STEP, NumberMode
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.switch import SwitchDeviceClass
+from homeassistant.components.text import TextMode
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.servents.binary_sensor import (
     ServEntBinarySensor,
@@ -17,10 +20,15 @@ from custom_components.servents.binary_sensor import (
     ServEntThresholdBinarySensor,
 )
 from custom_components.servents.button import ServEntButton
+from custom_components.servents.date import ServEntDateEntity
+from custom_components.servents.datetime import ServEntDatetimeEntity
+from custom_components.servents.event import ServEntEventEntity
 from custom_components.servents.number import ServEntNumber
 from custom_components.servents.select import ServEntSelect
 from custom_components.servents.sensor import ServEntSensor
 from custom_components.servents.switch import ServEntSwitch
+from custom_components.servents.text import ServEntTextEntity
+from custom_components.servents.time import ServEntTimeEntity
 from tests.conftest import make_definition
 
 
@@ -251,6 +259,135 @@ class TestServEntButton:
     def test_name_property(self):
         ent = self.make_button()
         assert ent.name == "Test"
+
+
+class TestServEntTextEntity:
+    def test_config_and_state(self):
+        ent = ServEntTextEntity(
+            make_definition("text", "txt1", min_length=1, max_length=10, pattern="^[a-z]+$", mode="password")
+        )
+        ent.set_new_state_and_attributes("hello", {"a": 1})
+
+        assert ent._attr_mode is TextMode.PASSWORD
+        assert ent._attr_native_min == 1
+        assert ent._attr_native_max == 10
+        assert ent._attr_pattern == "^[a-z]+$"
+        assert ent.native_value == "hello"
+        assert ent._attr_extra_state_attributes == {"a": 1, "servent_id": "txt1"}
+
+    async def test_async_set_value_fires_event_and_updates_state(self):
+        ent = ServEntTextEntity(make_definition("text", "txt1"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+        ent.set_new_state_and_attributes("old", {"keep": "yes"})
+
+        await ent.async_set_value("new")
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.text_changed",
+            {"servent_id": "txt1", "value": "new"},
+        )
+        assert ent.native_value == "new"
+        assert ent._attr_extra_state_attributes == {"keep": "yes", "servent_id": "txt1"}
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+
+class TestServEntDateEntity:
+    def test_state_parses_iso_date(self):
+        ent = ServEntDateEntity(make_definition("date", "date1"))
+        ent.set_new_state_and_attributes("2026-07-05", None)
+        assert ent.native_value == date(2026, 7, 5)
+        assert ent.state == "2026-07-05"
+
+    async def test_async_set_value_fires_event_and_updates_state(self):
+        ent = ServEntDateEntity(make_definition("date", "date1"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_value(date(2026, 7, 5))
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.date_changed",
+            {"servent_id": "date1", "value": "2026-07-05"},
+        )
+        assert ent.native_value == date(2026, 7, 5)
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+
+class TestServEntTimeEntity:
+    def test_state_parses_iso_time(self):
+        ent = ServEntTimeEntity(make_definition("time", "time1"))
+        ent.set_new_state_and_attributes("12:30:15", None)
+        assert ent.native_value == time(12, 30, 15)
+        assert ent.state == "12:30:15"
+
+    async def test_async_set_value_fires_event_and_updates_state(self):
+        ent = ServEntTimeEntity(make_definition("time", "time1"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_value(time(12, 30, 15))
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.time_changed",
+            {"servent_id": "time1", "value": "12:30:15"},
+        )
+        assert ent.native_value == time(12, 30, 15)
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+
+class TestServEntDatetimeEntity:
+    def test_state_parses_timezone_aware_datetime(self):
+        ent = ServEntDatetimeEntity(make_definition("date_time", "dt1"))
+        ent.set_new_state_and_attributes("2026-07-05T12:30:15+00:00", None)
+        assert ent.native_value == datetime(2026, 7, 5, 12, 30, 15, tzinfo=timezone.utc)
+        assert ent.state == "2026-07-05T12:30:15+00:00"
+
+    def test_naive_datetime_is_rejected(self):
+        ent = ServEntDatetimeEntity(make_definition("date_time", "dt1"))
+        with pytest.raises(ValueError, match="timezone"):
+            ent.set_new_state_and_attributes("2026-07-05T12:30:15", None)
+
+    async def test_async_set_value_fires_event_and_updates_state(self):
+        ent = ServEntDatetimeEntity(make_definition("date_time", "dt1"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+        value = datetime(2026, 7, 5, 12, 30, 15, tzinfo=timezone.utc)
+
+        await ent.async_set_value(value)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.datetime_changed",
+            {"servent_id": "dt1", "value": "2026-07-05T12:30:15+00:00"},
+        )
+        assert ent.native_value == value
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+
+class TestServEntEventEntity:
+    def test_config(self):
+        ent = ServEntEventEntity(
+            make_definition("event", "ev1", event_types=["pressed", "held"], device_class="doorbell")
+        )
+        assert ent.event_types == ["pressed", "held"]
+        assert ent.device_class is EventDeviceClass.DOORBELL
+
+    async def test_async_trigger_event_updates_state_and_attributes(self):
+        ent = ServEntEventEntity(make_definition("event", "ev1", event_types=["pressed", "held"]))
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_trigger_event("pressed", {"confidence": 0.93})
+
+        assert ent.state is not None
+        assert ent.state_attributes["event_type"] == "pressed"
+        assert ent.state_attributes["confidence"] == 0.93
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_async_trigger_event_rejects_invalid_type(self):
+        ent = ServEntEventEntity(make_definition("event", "ev1", event_types=["pressed"]))
+
+        with pytest.raises(HomeAssistantError, match="Invalid event type"):
+            await ent.async_trigger_event("held", {})
 
 
 class TestServEntThresholdBinarySensor:

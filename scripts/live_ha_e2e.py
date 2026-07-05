@@ -36,6 +36,11 @@ COMPONENT_SRC = ROOT / "custom_components" / "servents"
 COMPONENT_DST = CONFIG_DIR / "custom_components" / "servents"
 DATA_MODEL_DIR = ROOT / "servents-data-model"
 SERVENT_ID = "live-ha-temperature"
+TEXT_SERVENT_ID = "live-ha-text"
+DATE_SERVENT_ID = "live-ha-date"
+TIME_SERVENT_ID = "live-ha-time"
+DATETIME_SERVENT_ID = "live-ha-datetime"
+EVENT_SERVENT_ID = "live-ha-event"
 AUTH_USER = "servents-live"
 AUTH_PASSWORD = "servents-live-password"
 CLIENT_ID = "http://localhost/"
@@ -434,12 +439,12 @@ def call_service(
     )
 
 
-def find_live_entity_state(base_url: str, token: str) -> dict[str, Any] | None:
-    """Find the live sensor by the ServEnts routing attribute."""
+def find_servent_entity_state(base_url: str, token: str, servent_id: str) -> dict[str, Any] | None:
+    """Find a live entity by the ServEnts routing attribute."""
     states = http_request(base_url, "GET", "/api/states", token=token)
     for state in states:
         attributes = state.get("attributes") or {}
-        if attributes.get("servent_id") == SERVENT_ID:
+        if attributes.get("servent_id") == servent_id:
             return state
     return None
 
@@ -455,14 +460,46 @@ def find_entity_state_by_entity_id(base_url: str, token: str, entity_id: str) ->
 
 def wait_for_live_entity(base_url: str, token: str, expected_state: str, timeout_seconds: int) -> dict[str, Any]:
     """Wait until the ServEnts sensor has the expected HA state."""
+    return wait_for_servent_entity(base_url, token, SERVENT_ID, expected_state, timeout_seconds)
+
+
+def wait_for_servent_entity(
+    base_url: str,
+    token: str,
+    servent_id: str,
+    expected_state: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Wait until a ServEnt entity has the expected HA state."""
     deadline = time.monotonic() + timeout_seconds
     last_state: dict[str, Any] | None = None
     while time.monotonic() < deadline:
-        last_state = find_live_entity_state(base_url, token)
+        last_state = find_servent_entity_state(base_url, token, servent_id)
         if last_state is not None and last_state.get("state") == expected_state:
             return last_state
         time.sleep(1)
-    raise LiveHAError(f"Live entity did not reach state {expected_state!r}; last state was {last_state}")
+    raise LiveHAError(f"ServEnt entity {servent_id} did not reach state {expected_state!r}; last state was {last_state}")
+
+
+def wait_for_servent_attributes(
+    base_url: str,
+    token: str,
+    servent_id: str,
+    expected_attributes: dict[str, Any],
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Wait until a ServEnt entity has the expected attribute subset."""
+    deadline = time.monotonic() + timeout_seconds
+    last_state: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last_state = find_servent_entity_state(base_url, token, servent_id)
+        attributes = (last_state or {}).get("attributes") or {}
+        if all(attributes.get(key) == value for key, value in expected_attributes.items()):
+            return last_state
+        time.sleep(1)
+    raise LiveHAError(
+        f"ServEnt entity {servent_id} did not get attributes {expected_attributes!r}; last state was {last_state}"
+    )
 
 
 def wait_for_entity_id_state(
@@ -641,6 +678,106 @@ def run_smoke(base_url: str, token: str) -> str:
     recreated_attributes = recreated.get("attributes") or {}
     if recreated_attributes.get("phase") != "3":
         raise LiveHAError(f"Removed entity did not recreate cleanly: {recreated}")
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "text",
+                    "servent_id": TEXT_SERVENT_ID,
+                    "name": "Live HA Text",
+                    "default_state": "hello",
+                    "min_length": 1,
+                    "max_length": 20,
+                    "mode": "text",
+                    "fixed_attributes": {"phase": "4"},
+                },
+                {
+                    "entity_type": "date",
+                    "servent_id": DATE_SERVENT_ID,
+                    "name": "Live HA Date",
+                    "default_state": "2026-07-05",
+                    "fixed_attributes": {"phase": "4"},
+                },
+                {
+                    "entity_type": "time",
+                    "servent_id": TIME_SERVENT_ID,
+                    "name": "Live HA Time",
+                    "default_state": "12:30:15",
+                    "fixed_attributes": {"phase": "4"},
+                },
+                {
+                    "entity_type": "date_time",
+                    "servent_id": DATETIME_SERVENT_ID,
+                    "name": "Live HA Datetime",
+                    "default_state": "2026-07-05T12:30:15+00:00",
+                    "fixed_attributes": {"phase": "4"},
+                },
+                {
+                    "entity_type": "event",
+                    "servent_id": EVENT_SERVENT_ID,
+                    "name": "Live HA Event",
+                    "event_types": ["pressed", "held"],
+                    "device_class": "button",
+                    "fixed_attributes": {"phase": "4"},
+                },
+            ]
+        },
+    )
+    text_state = wait_for_servent_entity(base_url, token, TEXT_SERVENT_ID, "hello", 30)
+    date_state = wait_for_servent_entity(base_url, token, DATE_SERVENT_ID, "2026-07-05", 30)
+    time_state = wait_for_servent_entity(base_url, token, TIME_SERVENT_ID, "12:30:15", 30)
+    datetime_state = wait_for_servent_entity(
+        base_url,
+        token,
+        DATETIME_SERVENT_ID,
+        "2026-07-05T12:30:15+00:00",
+        30,
+    )
+    event_state = find_servent_entity_state(base_url, token, EVENT_SERVENT_ID)
+    if event_state is None:
+        raise LiveHAError("Event entity was not created")
+
+    call_service(base_url, token, "text", "set_value", {"entity_id": text_state["entity_id"], "value": "world"})
+    wait_for_servent_entity(base_url, token, TEXT_SERVENT_ID, "world", 30)
+
+    call_service(base_url, token, "date", "set_value", {"entity_id": date_state["entity_id"], "date": "2026-07-06"})
+    wait_for_servent_entity(base_url, token, DATE_SERVENT_ID, "2026-07-06", 30)
+
+    call_service(base_url, token, "time", "set_value", {"entity_id": time_state["entity_id"], "time": "13:45:00"})
+    wait_for_servent_entity(base_url, token, TIME_SERVENT_ID, "13:45:00", 30)
+
+    call_service(
+        base_url,
+        token,
+        "datetime",
+        "set_value",
+        {"entity_id": datetime_state["entity_id"], "datetime": "2026-07-06T13:45:00+00:00"},
+    )
+    wait_for_servent_entity(base_url, token, DATETIME_SERVENT_ID, "2026-07-06T13:45:00+00:00", 30)
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "trigger_event",
+        {
+            "servent_id": EVENT_SERVENT_ID,
+            "event_type": "pressed",
+            "attributes": {"confidence": 0.93},
+        },
+    )
+    wait_for_servent_attributes(
+        base_url,
+        token,
+        EVENT_SERVENT_ID,
+        {"event_type": "pressed", "confidence": 0.93},
+        30,
+    )
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))
