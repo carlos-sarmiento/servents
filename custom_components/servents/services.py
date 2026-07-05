@@ -24,9 +24,16 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import CORE_DEVICE_ID, DOMAIN
-from .definitions import get_device_id, parse_entity_config, parse_update_entity
+from .definitions import (
+    get_device_id,
+    ha_domain_for_definition,
+    parse_entity_config,
+    parse_update_entity,
+    servent_unique_id,
+)
 from .registrar import ServentDefinitionRegistrar, get_registrar_from_hass
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,6 +101,9 @@ async def handle_create_entity(call: ServiceCall) -> None:
                 definition.servent_id,
                 err,
             )
+            continue
+
+        migrate_previous_servent_ids(call.hass, definition)
 
     register_and_update_all_entities(registrar)
 
@@ -103,17 +113,91 @@ async def handle_update_entity(call: ServiceCall) -> None:
     registrar = get_registrar_from_hass(call.hass)
 
     data = parse_update_entity(call.data)
+    has_state_payload = "state" in call.data
+    has_attributes_payload = "attributes" in call.data
 
     live_entity = registrar.get_live_entity_for_servent_id(data.servent_id)
 
     if live_entity:
-        live_entity.set_new_state_and_attributes(data.state, data.attributes)
-        live_entity.verified_schedule_update_ha_state()
+        did_update = False
+
+        if data.available is not None:
+            live_entity.set_availability(data.available)
+            did_update = True
+
+        if has_state_payload:
+            if data.merge_attributes:
+                live_entity.set_new_state_and_attributes(
+                    data.state,
+                    data.attributes,
+                    merge_attributes=True,
+                )
+            else:
+                live_entity.set_new_state_and_attributes(data.state, data.attributes)
+            did_update = True
+        elif has_attributes_payload:
+            live_entity.set_new_attributes(
+                data.attributes,
+                merge_attributes=bool(data.merge_attributes),
+            )
+            did_update = True
+
+        if did_update:
+            live_entity.verified_schedule_update_ha_state()
 
     else:
         _LOGGER.warning(
             f"Tried to update a Non Registered ID {data.servent_id}. This can happen if you are sending an update event immediately after a creation event and the ID hasn't been registered yet"
         )
+
+
+def migrate_previous_servent_ids(hass: HomeAssistant, definition) -> None:
+    """Migrate the first resolvable previous ServEnt unique_id before build."""
+    previous_servent_ids = definition.previous_servent_ids
+    if not previous_servent_ids:
+        return
+
+    registry = er.async_get(hass)
+    domain = ha_domain_for_definition(definition)
+    new_unique_id = servent_unique_id(definition.servent_id)
+    new_entity_id = registry.async_get_entity_id(domain, DOMAIN, new_unique_id)
+
+    for old_servent_id in previous_servent_ids:
+        old_unique_id = servent_unique_id(old_servent_id)
+        old_entity_id = registry.async_get_entity_id(domain, DOMAIN, old_unique_id)
+        if old_entity_id is None:
+            continue
+
+        if new_entity_id is not None:
+            _LOGGER.warning(
+                "ServEnts rename conflict: both %r (old) and %r (new) exist in "
+                "the registry; refusing to migrate %r -> %r. Remove one before renaming.",
+                old_unique_id,
+                new_unique_id,
+                old_servent_id,
+                definition.servent_id,
+            )
+            return
+
+        try:
+            registry.async_update_entity(old_entity_id, new_unique_id=new_unique_id)
+        except Exception as err:  # noqa: BLE001 - defensive wrapper around HA registry internals
+            _LOGGER.warning(
+                "ServEnts could not migrate unique_id %r -> %r for entity %r: %s",
+                old_unique_id,
+                new_unique_id,
+                old_entity_id,
+                err,
+            )
+            return
+
+        _LOGGER.info(
+            "ServEnts migrated unique_id %r -> %r (entity %r); history preserved.",
+            old_unique_id,
+            new_unique_id,
+            old_entity_id,
+        )
+        return
 
 
 async def handle_cleanup_devices(call: ServiceCall) -> None:

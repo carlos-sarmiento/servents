@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from homeassistant.const import Platform
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from serde import SerdeError, from_dict
@@ -40,6 +41,28 @@ ENTITY_TYPE_TO_CONFIG_CLASS: dict[EntityType, type[EntityConfig]] = {
     EntityType.NUMBER: NumberConfig,
     EntityType.BUTTON: ButtonConfig,
     EntityType.SELECT: SelectConfig,
+}
+
+ENTITY_TYPE_TO_HA_DOMAIN: dict[EntityType, str] = {
+    EntityType.BINARY_SENSOR: Platform.BINARY_SENSOR,
+    EntityType.BUTTON: Platform.BUTTON,
+    EntityType.CLIMATE: Platform.CLIMATE,
+    EntityType.COVER: Platform.COVER,
+    EntityType.DATE: Platform.DATE,
+    EntityType.DATETIME: Platform.DATETIME,
+    EntityType.EVENT: Platform.EVENT,
+    EntityType.FAN: Platform.FAN,
+    EntityType.LIGHT: Platform.LIGHT,
+    EntityType.LOCK: Platform.LOCK,
+    EntityType.NUMBER: Platform.NUMBER,
+    EntityType.SELECT: Platform.SELECT,
+    EntityType.SENSOR: Platform.SENSOR,
+    EntityType.SIREN: Platform.SIREN,
+    EntityType.SWITCH: Platform.SWITCH,
+    EntityType.TEXT: Platform.TEXT,
+    EntityType.THRESHOLD_BINARY_SENSOR: Platform.BINARY_SENSOR,
+    EntityType.TIME: Platform.TIME,
+    EntityType.VALVE: Platform.VALVE,
 }
 
 
@@ -82,11 +105,35 @@ def get_device_id(device: DeviceConfig) -> str:
     return f"device-{device.device_id}"
 
 
+def ha_domain_for_entity_type(entity_type: EntityType) -> str:
+    """Return the Home Assistant platform domain for a ServEnt entity type."""
+    return ENTITY_TYPE_TO_HA_DOMAIN[entity_type]
+
+
+def ha_domain_for_definition(definition: EntityConfig) -> str:
+    """Return the Home Assistant platform domain for a parsed definition."""
+    return ha_domain_for_entity_type(EntityType(definition.entity_type))
+
+
+def servent_unique_id(servent_id: str) -> str:
+    """Return the frozen Home Assistant unique_id for a ServEnt entity."""
+    return f"sensor-{servent_id}"
+
+
 def get_device_info(device: DeviceConfig) -> DeviceInfo:
-    return DeviceInfo(
-        identifiers={(DOMAIN, get_device_id(device))},
-        name=device.name,
-        manufacturer=device.manufacturer or "ServEnts",
-        model=device.model or "Virtual Device",
-        sw_version=device.version,
-    )
+    info: DeviceInfo = {
+        "identifiers": {(DOMAIN, get_device_id(device))},
+        "name": device.name,
+        "manufacturer": device.manufacturer or "ServEnts",
+        "model": device.model or "Virtual Device",
+    }
+
+    optional_fields = {
+        "configuration_url": device.configuration_url,
+        "hw_version": device.hw_version,
+        "serial_number": device.serial_number,
+        "suggested_area": device.suggested_area,
+        "sw_version": device.sw_version or device.version,
+    }
+    info.update({key: value for key, value in optional_fields.items() if value is not None})
+    return info

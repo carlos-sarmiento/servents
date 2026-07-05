@@ -105,6 +105,74 @@ class TestUpdateConfig:
         sensor.apply_config(make_definition("sensor", "s1", name="Renamed"))
         assert sensor._attr_native_value == 10
 
+    def test_update_resets_availability(self):
+        sensor = make_sensor()
+        sensor.set_availability(False)
+        sensor.apply_config(make_definition("sensor", "s1", name="Renamed"))
+        assert sensor.available is True
+
+
+class TestAvailability:
+    def test_entities_default_to_available(self):
+        assert make_sensor().available is True
+
+    def test_set_availability(self):
+        sensor = make_sensor()
+        sensor.set_availability(False)
+        assert sensor.available is False
+        sensor.set_availability(True)
+        assert sensor.available is True
+
+
+class TestAttributeUpdates:
+    def test_attribute_only_replace_leaves_native_state_unchanged(self):
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
+        sensor.set_new_state_and_attributes(10, {"old": "drop"})
+
+        sensor.set_new_attributes({"new": "kept"})
+
+        assert sensor._attr_native_value == 10
+        assert sensor._attr_extra_state_attributes == {
+            "new": "kept",
+            "zone": "kitchen",
+            "servent_id": "s1",
+        }
+
+    def test_attribute_only_merge_preserves_existing_dynamic_attributes(self):
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
+        sensor.set_new_state_and_attributes(10, {"old": "kept"})
+
+        sensor.set_new_attributes({"new": "kept"}, merge_attributes=True)
+
+        assert sensor._attr_native_value == 10
+        assert sensor._attr_extra_state_attributes == {
+            "old": "kept",
+            "new": "kept",
+            "zone": "kitchen",
+            "servent_id": "s1",
+        }
+
+    def test_state_update_merge_preserves_existing_dynamic_attributes(self):
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
+        sensor.set_new_state_and_attributes(10, {"old": "kept"})
+
+        sensor.set_new_state_and_attributes(11, {"new": "kept"}, merge_attributes=True)
+
+        assert sensor._attr_native_value == 11
+        assert sensor._attr_extra_state_attributes == {
+            "old": "kept",
+            "new": "kept",
+            "zone": "kitchen",
+            "servent_id": "s1",
+        }
+
+    def test_attributes_cannot_override_fixed_or_servent_id(self):
+        sensor = make_sensor(fixed_attributes={"zone": "kitchen"})
+
+        sensor.set_new_attributes({"zone": "attic", "servent_id": "bad"})
+
+        assert sensor._attr_extra_state_attributes == {"zone": "kitchen", "servent_id": "s1"}
+
 
 class TestDeviceInfo:
     def test_no_device_definition_returns_none(self):
@@ -221,3 +289,58 @@ class TestAttributePersistence:
         await sensor.restore_attributes()
 
         assert sensor._attr_extra_state_attributes["servent_id"] == "s1"
+
+    async def test_restore_state_false_skips_native_and_attribute_restore(self):
+        sensor = make_sensor(default_state=42, restore_state=False)
+        calls = []
+
+        async def restore_native():
+            calls.append("native")
+
+        async def restore_attrs():
+            calls.append("attributes")
+
+        sensor._restore_native_state = restore_native
+        sensor.restore_attributes = restore_attrs
+
+        await sensor.async_added_to_hass()
+
+        assert calls == []
+        assert sensor._attr_native_value == 42
+
+    async def test_restore_state_true_reads_native_and_attribute_restore(self):
+        sensor = make_sensor(restore_state=True)
+        calls = []
+
+        async def restore_native():
+            calls.append("native")
+
+        async def restore_attrs():
+            calls.append("attributes")
+
+        sensor._restore_native_state = restore_native
+        sensor.restore_attributes = restore_attrs
+
+        await sensor.async_added_to_hass()
+
+        assert calls == ["native", "attributes"]
+
+    def test_restore_state_false_still_persists_extra_restore_data(self):
+        sensor = make_sensor(restore_state=False, fixed_attributes={"zone": "kitchen"})
+        sensor.set_new_state_and_attributes(21.5, {"note": "hi"})
+
+        stored = sensor.extra_restore_state_data.as_dict()
+
+        assert stored[SERVENT_ATTRIBUTES_STORE_KEY] == {
+            "zone": "kitchen",
+            "note": "hi",
+            "servent_id": "s1",
+        }
+
+    def test_reconfigure_can_reenable_restore_state(self):
+        sensor = make_sensor(restore_state=False)
+        assert sensor._servent_restore_state is False
+
+        sensor.apply_config(make_definition("sensor", "s1", restore_state=True))
+
+        assert sensor._servent_restore_state is True

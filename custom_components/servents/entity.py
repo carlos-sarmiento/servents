@@ -105,6 +105,8 @@ class ServEntEntity(Generic[T], RestoreEntity):
         """(Re)apply the mutable configuration. Runs on setup and reconfigure."""
         previous_fixed_attributes = getattr(self, "fixed_attributes", {})
         self.servent_config = config
+        self._servent_available = True
+        self._servent_restore_state = config.restore_state
 
         self._attr_name = config.name
         self._attr_entity_category = EntityCategory(config.entity_category) if config.entity_category else None
@@ -128,17 +130,44 @@ class ServEntEntity(Generic[T], RestoreEntity):
             dynamic_attributes | self.fixed_attributes | {"servent_id": self.servent_id}
         )
 
-    def set_new_state_and_attributes(self, state, attributes) -> None:
+    @property
+    def available(self) -> bool:
+        """Return whether Domovoy currently considers this entity available."""
+        return self._servent_available
+
+    def set_availability(self, available: bool) -> None:
+        """Set Home Assistant availability without changing native state."""
+        self._servent_available = available
+
+    def _current_dynamic_attributes(self) -> dict[str, Any]:
+        """Return live app-pushed attributes, excluding fixed routing fields."""
+        current = getattr(self, "_attr_extra_state_attributes", {}) or {}
+        return {
+            key: value
+            for key, value in current.items()
+            if key not in self.fixed_attributes and key != "servent_id"
+        }
+
+    def _merge_attributes(self, attributes: dict[str, Any] | None, merge_attributes: bool) -> dict[str, Any]:
+        if attributes is None:
+            attributes = {}
+
+        dynamic = self._current_dynamic_attributes() if merge_attributes else {}
+        return dynamic | attributes | self.fixed_attributes | {"servent_id": self.servent_id}
+
+    def set_new_attributes(self, attributes, *, merge_attributes: bool = False) -> None:
+        """Republish attributes without touching native state."""
+        self._attr_extra_state_attributes = self._merge_attributes(attributes, merge_attributes)
+
+    def set_new_state_and_attributes(self, state, attributes, *, merge_attributes: bool = False) -> None:
         """Write native state + republish the merged extra attributes.
 
         The base owns the ``fixed_attributes | attributes | {"servent_id": ...}``
         merge so ``servent_id`` is always present and can never be overridden
         (constraint 1). Platforms only implement ``_write_native_state``.
         """
-        if attributes is None:
-            attributes = {}
         self._write_native_state(state)
-        self._attr_extra_state_attributes = self.fixed_attributes | attributes | {"servent_id": self.servent_id}
+        self._attr_extra_state_attributes = self._merge_attributes(attributes, merge_attributes)
 
     def _write_native_state(self, state) -> None:
         """Write the platform's native value (``_attr_native_value`` etc.).
@@ -152,6 +181,8 @@ class ServEntEntity(Generic[T], RestoreEntity):
 
     async def async_added_to_hass(self) -> None:
         """Restore native value (platform-specific) then attributes (shared)."""
+        if not self._servent_restore_state:
+            return
         await self._restore_native_state()
         await self.restore_attributes()
 

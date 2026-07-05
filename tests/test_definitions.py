@@ -9,6 +9,7 @@ FABLE-AUDIT.md (WP3).
 
 import pytest
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.const import Platform
 from servents.data_model.entity_configs import (
     BinarySensorConfig,
     ButtonConfig,
@@ -23,11 +24,14 @@ from servents.data_model.entity_configs import (
 from servents.data_model.entity_types import EntityType
 
 from custom_components.servents.definitions import (
+    ENTITY_TYPE_TO_HA_DOMAIN,
     ENTITY_TYPE_TO_CONFIG_CLASS,
     get_device_id,
     get_device_info,
+    ha_domain_for_entity_type,
     parse_entity_config,
     parse_update_entity,
+    servent_unique_id,
 )
 
 
@@ -305,6 +309,15 @@ class TestParseEntityConfig:
 
 
 class TestDeviceHelpers:
+    def test_servent_unique_id_uses_frozen_sensor_prefix(self):
+        assert servent_unique_id("abc") == "sensor-abc"
+
+    def test_ha_domain_mapping_covers_every_entity_type(self):
+        assert set(ENTITY_TYPE_TO_HA_DOMAIN) == set(EntityType)
+        assert ha_domain_for_entity_type(EntityType.SENSOR) == Platform.SENSOR
+        assert ha_domain_for_entity_type(EntityType.THRESHOLD_BINARY_SENSOR) == Platform.BINARY_SENSOR
+        assert ha_domain_for_entity_type(EntityType.DATETIME) == Platform.DATETIME
+
     def test_get_device_id_is_prefixed(self):
         # The "device-" prefix is frozen wire format (Domovoy constraint 7).
         assert get_device_id(DeviceConfig(device_id="abc", name="Dev")) == "device-abc"
@@ -318,7 +331,11 @@ class TestDeviceHelpers:
         assert info["name"] == "Dev"
         assert info["manufacturer"] == "ServEnts"
         assert info["model"] == "Virtual Device"
-        assert info["sw_version"] is None
+        assert "sw_version" not in info
+        assert "configuration_url" not in info
+        assert "hw_version" not in info
+        assert "serial_number" not in info
+        assert "suggested_area" not in info
 
     def test_get_device_info_explicit_values(self):
         info = get_device_info(
@@ -327,6 +344,27 @@ class TestDeviceHelpers:
         assert info["manufacturer"] == "Acme"
         assert info["model"] == "M1"
         assert info["sw_version"] == "1.2.3"
+
+    def test_get_device_info_rich_fields(self):
+        info = get_device_info(
+            DeviceConfig(
+                device_id="abc",
+                name="Dev",
+                manufacturer="Acme",
+                model="M1",
+                version="1.2.3",
+                sw_version="2.0.0",
+                hw_version="rev-a",
+                serial_number="serial-123",
+                suggested_area="Kitchen",
+                configuration_url="https://example.test/device",
+            )
+        )
+        assert info["configuration_url"] == "https://example.test/device"
+        assert info["hw_version"] == "rev-a"
+        assert info["serial_number"] == "serial-123"
+        assert info["suggested_area"] == "Kitchen"
+        assert info["sw_version"] == "2.0.0"
 
 
 class TestParseUpdateEntity:

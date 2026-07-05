@@ -444,6 +444,15 @@ def find_live_entity_state(base_url: str, token: str) -> dict[str, Any] | None:
     return None
 
 
+def find_entity_state_by_entity_id(base_url: str, token: str, entity_id: str) -> dict[str, Any] | None:
+    """Find a live entity by its HA entity_id."""
+    states = http_request(base_url, "GET", "/api/states", token=token)
+    for state in states:
+        if state.get("entity_id") == entity_id:
+            return state
+    return None
+
+
 def wait_for_live_entity(base_url: str, token: str, expected_state: str, timeout_seconds: int) -> dict[str, Any]:
     """Wait until the ServEnts sensor has the expected HA state."""
     deadline = time.monotonic() + timeout_seconds
@@ -454,6 +463,24 @@ def wait_for_live_entity(base_url: str, token: str, expected_state: str, timeout
             return last_state
         time.sleep(1)
     raise LiveHAError(f"Live entity did not reach state {expected_state!r}; last state was {last_state}")
+
+
+def wait_for_entity_id_state(
+    base_url: str,
+    token: str,
+    entity_id: str,
+    expected_state: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Wait until a known HA entity_id has the expected state."""
+    deadline = time.monotonic() + timeout_seconds
+    last_state: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last_state = find_entity_state_by_entity_id(base_url, token, entity_id)
+        if last_state is not None and last_state.get("state") == expected_state:
+            return last_state
+        time.sleep(1)
+    raise LiveHAError(f"Entity {entity_id} did not reach state {expected_state!r}; last state was {last_state}")
 
 
 def run_smoke(base_url: str, token: str) -> str:
@@ -484,7 +511,8 @@ def run_smoke(base_url: str, token: str) -> str:
             ]
         },
     )
-    wait_for_live_entity(base_url, token, "0", 30)
+    state = wait_for_live_entity(base_url, token, "0", 30)
+    entity_id = state["entity_id"]
 
     call_service(
         base_url,
@@ -501,6 +529,65 @@ def run_smoke(base_url: str, token: str) -> str:
     attributes = state.get("attributes") or {}
     if attributes.get("source") != "live-ha" or attributes.get("phase") != "0":
         raise LiveHAError(f"Live entity attributes were not preserved: {attributes}")
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "update_state",
+        {
+            "servent_id": SERVENT_ID,
+            "available": False,
+        },
+    )
+    wait_for_entity_id_state(base_url, token, entity_id, "unavailable", 30)
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "update_state",
+        {
+            "servent_id": SERVENT_ID,
+            "available": True,
+        },
+    )
+    state = wait_for_entity_id_state(base_url, token, entity_id, "21.5", 30)
+    if (state.get("attributes") or {}).get("source") != "live-ha":
+        raise LiveHAError(f"Availability restore clobbered attributes: {state}")
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "update_state",
+        {
+            "servent_id": SERVENT_ID,
+            "attributes": {"source": "attribute-only", "phase2": "attrs"},
+        },
+    )
+    state = wait_for_entity_id_state(base_url, token, entity_id, "21.5", 30)
+    attributes = state.get("attributes") or {}
+    if attributes.get("source") != "attribute-only" or attributes.get("phase2") != "attrs":
+        raise LiveHAError(f"Attribute-only update failed: {attributes}")
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "update_state",
+        {
+            "servent_id": SERVENT_ID,
+            "state": 22.5,
+            "attributes": {"merged": "yes"},
+            "available": True,
+            "merge_attributes": True,
+        },
+    )
+    state = wait_for_entity_id_state(base_url, token, entity_id, "22.5", 30)
+    attributes = state.get("attributes") or {}
+    if attributes.get("source") != "attribute-only" or attributes.get("merged") != "yes":
+        raise LiveHAError(f"Merge-attribute update failed: {attributes}")
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))

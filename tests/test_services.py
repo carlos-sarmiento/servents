@@ -131,6 +131,89 @@ class TestHandleCreateEntity:
         live.apply_config.assert_called_once()
         live.verified_schedule_update_ha_state.assert_called_once()
 
+    async def test_previous_servent_id_migrates_before_build(self, registrar):
+        builder = register_builder(registrar, SensorConfig)
+        registry = MagicMock()
+        registry.async_get_entity_id.side_effect = lambda _domain, _platform, unique_id: {
+            "sensor-old-s1": "sensor.old_s1",
+        }.get(unique_id)
+
+        with patch("custom_components.servents.services.er.async_get", return_value=registry):
+            await handle_create_entity(
+                FakeServiceCall(
+                    {
+                        "entities": [
+                            {
+                                "entity_type": "sensor",
+                                "servent_id": "new-s1",
+                                "name": "S1",
+                                "previous_servent_ids": ["old-s1"],
+                            }
+                        ]
+                    },
+                    registrar,
+                )
+            )
+
+        registry.async_update_entity.assert_called_once_with(
+            "sensor.old_s1",
+            new_unique_id="sensor-new-s1",
+        )
+        builder.assert_called_once()
+
+    async def test_previous_servent_id_conflict_warns_and_refuses_migration(self, registrar, caplog):
+        register_builder(registrar, SensorConfig)
+        registry = MagicMock()
+        registry.async_get_entity_id.side_effect = lambda _domain, _platform, unique_id: {
+            "sensor-old-s1": "sensor.old_s1",
+            "sensor-new-s1": "sensor.new_s1",
+        }.get(unique_id)
+
+        with patch("custom_components.servents.services.er.async_get", return_value=registry):
+            await handle_create_entity(
+                FakeServiceCall(
+                    {
+                        "entities": [
+                            {
+                                "entity_type": "sensor",
+                                "servent_id": "new-s1",
+                                "name": "S1",
+                                "previous_servent_ids": ["old-s1"],
+                            }
+                        ]
+                    },
+                    registrar,
+                )
+            )
+
+        registry.async_update_entity.assert_not_called()
+        assert "ServEnts rename conflict" in caplog.text
+
+    async def test_previous_servent_id_noops_when_old_entry_is_absent(self, registrar, caplog):
+        register_builder(registrar, SensorConfig)
+        registry = MagicMock()
+        registry.async_get_entity_id.return_value = None
+
+        with patch("custom_components.servents.services.er.async_get", return_value=registry):
+            await handle_create_entity(
+                FakeServiceCall(
+                    {
+                        "entities": [
+                            {
+                                "entity_type": "sensor",
+                                "servent_id": "new-s1",
+                                "name": "S1",
+                                "previous_servent_ids": ["old-s1"],
+                            }
+                        ]
+                    },
+                    registrar,
+                )
+            )
+
+        registry.async_update_entity.assert_not_called()
+        assert "ServEnts rename conflict" not in caplog.text
+
 
 class TestHandleUpdateEntity:
     async def test_updates_live_entity(self, registrar):
@@ -142,6 +225,79 @@ class TestHandleUpdateEntity:
         )
 
         live.set_new_state_and_attributes.assert_called_once_with(42, {"a": 1})
+        live.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_availability_only_update_does_not_touch_state(self, registrar):
+        live = MagicMock()
+        registrar.register_live_entity("s1", live)
+
+        await handle_update_entity(FakeServiceCall({"servent_id": "s1", "available": False}, registrar))
+
+        live.set_availability.assert_called_once_with(False)
+        live.set_new_state_and_attributes.assert_not_called()
+        live.set_new_attributes.assert_not_called()
+        live.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_available_plus_state_updates_both_and_schedules_once(self, registrar):
+        live = MagicMock()
+        registrar.register_live_entity("s1", live)
+
+        await handle_update_entity(
+            FakeServiceCall(
+                {"servent_id": "s1", "state": 42, "attributes": {"a": 1}, "available": True},
+                registrar,
+            )
+        )
+
+        live.set_availability.assert_called_once_with(True)
+        live.set_new_state_and_attributes.assert_called_once_with(42, {"a": 1})
+        live.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_attribute_only_update_leaves_state_unchanged(self, registrar):
+        live = MagicMock()
+        registrar.register_live_entity("s1", live)
+
+        await handle_update_entity(FakeServiceCall({"servent_id": "s1", "attributes": {"a": 1}}, registrar))
+
+        live.set_new_attributes.assert_called_once_with({"a": 1}, merge_attributes=False)
+        live.set_new_state_and_attributes.assert_not_called()
+        live.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_merge_attributes_state_update(self, registrar):
+        live = MagicMock()
+        registrar.register_live_entity("s1", live)
+
+        await handle_update_entity(
+            FakeServiceCall(
+                {
+                    "servent_id": "s1",
+                    "state": 42,
+                    "attributes": {"a": 1},
+                    "merge_attributes": True,
+                },
+                registrar,
+            )
+        )
+
+        live.set_new_state_and_attributes.assert_called_once_with(
+            42,
+            {"a": 1},
+            merge_attributes=True,
+        )
+        live.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_merge_attributes_attribute_only_update(self, registrar):
+        live = MagicMock()
+        registrar.register_live_entity("s1", live)
+
+        await handle_update_entity(
+            FakeServiceCall(
+                {"servent_id": "s1", "attributes": {"a": 1}, "merge_attributes": True},
+                registrar,
+            )
+        )
+
+        live.set_new_attributes.assert_called_once_with({"a": 1}, merge_attributes=True)
         live.verified_schedule_update_ha_state.assert_called_once()
 
     async def test_unknown_servent_id_warns_and_does_not_raise(self, registrar, caplog):
@@ -246,6 +402,12 @@ class TestServiceSchemas:
         # Constraint 8: extra keys must pass, never be rejected.
         result = UPDATE_STATE_SCHEMA({"servent_id": "s1", "state": "on", "junk": True})
         assert result["junk"] is True
+
+    def test_update_state_schema_accepts_availability_and_merge_keys(self):
+        from custom_components.servents.services import UPDATE_STATE_SCHEMA
+
+        payload = {"servent_id": "s1", "available": False, "merge_attributes": True}
+        assert UPDATE_STATE_SCHEMA(payload) == payload
 
 
 class TestRegisterAndUpdateAllEntities:
