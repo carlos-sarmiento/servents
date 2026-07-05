@@ -21,7 +21,17 @@ Notable properties of the format:
 from unittest.mock import MagicMock, patch
 
 import pytest
-from servents.data_model.entity_configs import ClimateConfig, CoverConfig, DeviceConfig, FanConfig, LightConfig, SensorConfig
+from servents.data_model.entity_configs import (
+    ClimateConfig,
+    CoverConfig,
+    DeviceConfig,
+    FanConfig,
+    LightConfig,
+    LockConfig,
+    SensorConfig,
+    SirenConfig,
+    ValveConfig,
+)
 
 from custom_components.servents import handle_create_entity, handle_update_entity
 from custom_components.servents.definitions import parse_entity_config
@@ -116,6 +126,56 @@ def domovoy_climate_payload() -> dict:
         "temperature_unit": "C",
         "optimistic": True,
         "default_state": "off",
+    }
+
+
+def domovoy_lock_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable lock."""
+    return {
+        "entity_type": "lock",
+        "servent_id": "my_app-lock",
+        "name": "Lock",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "supports_open": True,
+        "code_format": "^\\d{4}$",
+        "optimistic": True,
+        "default_state": "locked",
+    }
+
+
+def domovoy_valve_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable valve."""
+    return {
+        "entity_type": "valve",
+        "servent_id": "my_app-valve",
+        "name": "Valve",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "device_class": "water",
+        "supports_position": True,
+        "supports_stop": True,
+        "optimistic": True,
+        "default_state": "closed",
+    }
+
+
+def domovoy_siren_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable siren."""
+    return {
+        "entity_type": "siren",
+        "servent_id": "my_app-siren",
+        "name": "Siren",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "available_tones": ["fire", "warning"],
+        "supports_volume_set": True,
+        "supports_duration": True,
+        "optimistic": True,
+        "default_state": False,
     }
 
 
@@ -216,6 +276,23 @@ class TestDomovoyPhase7CreateEntity:
         assert definition.supports_target_temperature is True
         assert definition.supports_target_temperature_range is False
         assert definition.default_state == "off"
+
+
+class TestDomovoyPhase8CreateEntity:
+    @pytest.mark.parametrize(
+        ("payload", "expected_class"),
+        [
+            (domovoy_lock_payload(), LockConfig),
+            (domovoy_valve_payload(), ValveConfig),
+            (domovoy_siren_payload(), SirenConfig),
+        ],
+    )
+    def test_long_tail_controllable_payloads_parse(self, payload, expected_class):
+        definition = parse_entity_config(payload)
+
+        assert type(definition) is expected_class
+        assert definition.optimistic is True
+        assert definition.app_name == "my_app"
 
 
 class TestDomovoyUpdateState:

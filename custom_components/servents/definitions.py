@@ -27,13 +27,16 @@ from servents.data_model.entity_configs import (
     EventConfig,
     FanConfig,
     LightConfig,
+    LockConfig,
     NumberConfig,
     SelectConfig,
     SensorConfig,
+    SirenConfig,
     SwitchConfig,
     TextConfig,
     ThresholdBinarySensorConfig,
     TimeConfig,
+    ValveConfig,
 )
 from servents.data_model.entity_types import EntityType
 from servents.data_model.update_entity import ServentUpdateEntity
@@ -54,6 +57,9 @@ ENTITY_TYPE_TO_CONFIG_CLASS: dict[EntityType, type[EntityConfig]] = {
     EntityType.LIGHT: LightConfig,
     EntityType.COVER: CoverConfig,
     EntityType.FAN: FanConfig,
+    EntityType.LOCK: LockConfig,
+    EntityType.VALVE: ValveConfig,
+    EntityType.SIREN: SirenConfig,
     EntityType.TEXT: TextConfig,
     EntityType.DATE: DateConfig,
     EntityType.TIME: TimeConfig,

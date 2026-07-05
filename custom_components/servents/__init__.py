@@ -40,12 +40,15 @@ PLATFORMS: list[Platform] = [
     Platform.COVER,
     Platform.FAN,
     Platform.LIGHT,
+    Platform.LOCK,
     Platform.NUMBER,
     Platform.SELECT,
     Platform.SENSOR,
+    Platform.SIREN,
     Platform.SWITCH,
     Platform.TEXT,
     Platform.TIME,
+    Platform.VALVE,
 ]
 
 

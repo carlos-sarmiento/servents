@@ -11,11 +11,15 @@ from homeassistant.components.cover import CoverDeviceClass, CoverEntityFeature,
 from homeassistant.components.event import EventDeviceClass
 from homeassistant.components.fan import FanEntityFeature
 from homeassistant.components.light import ColorMode
+from homeassistant.components.lock import LockEntityFeature
+from homeassistant.components.lock.const import LockState
 from homeassistant.components.number import NumberDeviceClass
 from homeassistant.components.number.const import DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE, DEFAULT_STEP, NumberMode
 from homeassistant.components.sensor.const import SensorDeviceClass
 from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.components.text import TextMode
+from homeassistant.components.siren import SirenEntityFeature
+from homeassistant.components.valve import ValveDeviceClass, ValveEntityFeature, ValveState
 from homeassistant.const import UnitOfTemperature
 from homeassistant.exceptions import HomeAssistantError
 
@@ -32,12 +36,15 @@ from custom_components.servents.datetime import ServEntDatetimeEntity
 from custom_components.servents.event import ServEntEventEntity
 from custom_components.servents.fan import ServEntFan
 from custom_components.servents.light import ServEntLight
+from custom_components.servents.lock import ServEntLock
 from custom_components.servents.number import ServEntNumber
 from custom_components.servents.select import ServEntSelect
 from custom_components.servents.sensor import ServEntSensor
+from custom_components.servents.siren import ServEntSiren
 from custom_components.servents.switch import ServEntSwitch
 from custom_components.servents.text import ServEntTextEntity
 from custom_components.servents.time import ServEntTimeEntity
+from custom_components.servents.valve import ServEntValve
 from tests.conftest import make_definition
 
 
@@ -721,6 +728,189 @@ class TestServEntClimate:
             {"servent_id": "climate1", "entity_type": "climate", "command": {"hvac_mode": "off"}},
         )
         assert ent._attr_hvac_mode is HVACMode.OFF
+
+
+class TestServEntLock:
+    def test_config_and_state(self):
+        ent = ServEntLock(
+            make_definition(
+                "lock",
+                "lock1",
+                supports_open=True,
+                code_format="^\\d{4}$",
+                default_state="locked",
+            )
+        )
+
+        assert ent.supported_features == LockEntityFeature.OPEN
+        assert ent.code_format == "^\\d{4}$"
+        assert ent.state == LockState.LOCKED
+
+    def test_dict_state(self):
+        ent = ServEntLock(make_definition("lock", "lock1"))
+
+        ent.set_new_state_and_attributes({"state": "open"}, None)
+
+        assert ent._attr_is_open is True
+        assert ent.state == LockState.OPEN
+
+    async def test_lock_fires_command_without_optimistic_state(self):
+        ent = ServEntLock(make_definition("lock", "lock1", default_state="unlocked"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_lock(code="1234")
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "lock1", "entity_type": "lock", "command": {"action": "lock", "code": "1234"}},
+        )
+        assert ent.state == LockState.UNLOCKED
+        ent.verified_schedule_update_ha_state.assert_not_called()
+
+    async def test_unlock_and_open_apply_optimistic_state(self):
+        ent = ServEntLock(make_definition("lock", "lock1", supports_open=True, optimistic=True))
+        ent.hass = MagicMock()
+
+        await ent.async_unlock()
+        assert ent.state == LockState.UNLOCKING
+
+        await ent.async_open(code="1234")
+        assert ent.state == LockState.OPENING
+        ent.hass.bus.async_fire.assert_any_call(
+            "servent.entity_command",
+            {"servent_id": "lock1", "entity_type": "lock", "command": {"action": "open", "code": "1234"}},
+        )
+
+
+class TestServEntValve:
+    def test_config_and_state(self):
+        ent = ServEntValve(
+            make_definition(
+                "valve",
+                "valve1",
+                device_class="water",
+                supports_position=True,
+                supports_stop=True,
+                default_state="closed",
+            )
+        )
+
+        assert ent.device_class is ValveDeviceClass.WATER
+        assert ent.reports_position is True
+        assert ent.supported_features == (
+            ValveEntityFeature.OPEN
+            | ValveEntityFeature.CLOSE
+            | ValveEntityFeature.SET_POSITION
+            | ValveEntityFeature.STOP
+        )
+        assert ent.current_valve_position == 0
+        assert ent.state == ValveState.CLOSED
+
+    def test_dict_state(self):
+        ent = ServEntValve(make_definition("valve", "valve1", supports_position=True))
+
+        ent.set_new_state_and_attributes({"state": "open", "position": 40}, None)
+
+        assert ent._attr_current_valve_position == 40
+        assert ent.state == ValveState.OPEN
+
+    async def test_open_fires_action_command_with_position_support(self):
+        ent = ServEntValve(make_definition("valve", "valve1", supports_position=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_handle_open_valve()
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "valve1", "entity_type": "valve", "command": {"action": "open"}},
+        )
+        ent.verified_schedule_update_ha_state.assert_not_called()
+
+    async def test_set_position_applies_optimistic_state(self):
+        ent = ServEntValve(make_definition("valve", "valve1", supports_position=True, optimistic=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_valve_position(45)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "valve1", "entity_type": "valve", "command": {"position": 45}},
+        )
+        assert ent.current_valve_position == 45
+        assert ent.state == ValveState.OPEN
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+
+class TestServEntSiren:
+    def test_config_and_state(self):
+        ent = ServEntSiren(
+            make_definition(
+                "siren",
+                "siren1",
+                available_tones=["fire", "warning"],
+                supports_volume_set=True,
+                supports_duration=True,
+                default_state=False,
+            )
+        )
+
+        assert ent.available_tones == ["fire", "warning"]
+        assert ent.supported_features == (
+            SirenEntityFeature.TURN_ON
+            | SirenEntityFeature.TURN_OFF
+            | SirenEntityFeature.TONES
+            | SirenEntityFeature.VOLUME_SET
+            | SirenEntityFeature.DURATION
+        )
+        assert ent.is_on is False
+
+    def test_dict_state(self):
+        ent = ServEntSiren(make_definition("siren", "siren1"))
+
+        ent.set_new_state_and_attributes({"state": True}, None)
+
+        assert ent.is_on is True
+
+    async def test_turn_on_converts_volume_and_applies_optimistic_state(self):
+        ent = ServEntSiren(
+            make_definition(
+                "siren",
+                "siren1",
+                available_tones=["fire"],
+                supports_volume_set=True,
+                supports_duration=True,
+                optimistic=True,
+            )
+        )
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_turn_on(tone="fire", volume_level=0.8, duration=3)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {
+                "servent_id": "siren1",
+                "entity_type": "siren",
+                "command": {"state": True, "tone": "fire", "duration": 3, "volume_level": 80},
+            },
+        )
+        assert ent.is_on is True
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_turn_off_fires_command(self):
+        ent = ServEntSiren(make_definition("siren", "siren1"))
+        ent.hass = MagicMock()
+
+        await ent.async_turn_off()
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "siren1", "entity_type": "siren", "command": {"state": False}},
+        )
 
 
 class TestServEntTextEntity:

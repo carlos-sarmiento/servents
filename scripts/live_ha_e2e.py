@@ -49,6 +49,9 @@ COVER_SERVENT_ID = "live-ha-cover"
 FAN_SERVENT_ID = "live-ha-fan"
 CLIMATE_SERVENT_ID = "live-ha-climate"
 CLIMATE_RANGE_SERVENT_ID = "live-ha-climate-range"
+LOCK_SERVENT_ID = "live-ha-lock"
+VALVE_SERVENT_ID = "live-ha-valve"
+SIREN_SERVENT_ID = "live-ha-siren"
 AUTH_USER = "servents-live"
 AUTH_PASSWORD = "servents-live-password"
 CLIENT_ID = "http://localhost/"
@@ -1099,6 +1102,109 @@ def run_smoke(base_url: str, token: str) -> str:
         {"target_temp_low": 20.0, "target_temp_high": 26.0},
         30,
     )
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "lock",
+                    "servent_id": LOCK_SERVENT_ID,
+                    "name": "Live HA Lock",
+                    "default_state": "locked",
+                    "supports_open": True,
+                    "code_format": "^\\d{4}$",
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "8"},
+                },
+                {
+                    "entity_type": "valve",
+                    "servent_id": VALVE_SERVENT_ID,
+                    "name": "Live HA Valve",
+                    "default_state": "closed",
+                    "device_class": "water",
+                    "supports_position": True,
+                    "supports_stop": True,
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "8"},
+                },
+                {
+                    "entity_type": "siren",
+                    "servent_id": SIREN_SERVENT_ID,
+                    "name": "Live HA Siren",
+                    "default_state": False,
+                    "available_tones": ["fire", "warning"],
+                    "supports_volume_set": True,
+                    "supports_duration": True,
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "8"},
+                },
+            ]
+        },
+    )
+    lock_state = wait_for_servent_entity(base_url, token, LOCK_SERVENT_ID, "locked", 30)
+    valve_state = wait_for_servent_entity(base_url, token, VALVE_SERVENT_ID, "closed", 30)
+    siren_state = wait_for_servent_entity(base_url, token, SIREN_SERVENT_ID, "off", 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "lock",
+        "unlock",
+        {"entity_id": lock_state["entity_id"], "code": "1234"},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": LOCK_SERVENT_ID,
+            "entity_type": "lock",
+            "command": {"action": "unlock", "code": "1234"},
+        },
+    )
+    wait_for_servent_entity(base_url, token, LOCK_SERVENT_ID, "unlocking", 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "valve",
+        "open_valve",
+        {"entity_id": valve_state["entity_id"]},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": VALVE_SERVENT_ID,
+            "entity_type": "valve",
+            "command": {"action": "open"},
+        },
+    )
+    wait_for_servent_entity(base_url, token, VALVE_SERVENT_ID, "opening", 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "siren",
+        "turn_on",
+        {"entity_id": siren_state["entity_id"], "tone": "fire", "volume_level": 0.8, "duration": 3},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": SIREN_SERVENT_ID,
+            "entity_type": "siren",
+            "command": {"state": True, "tone": "fire", "duration": 3, "volume_level": 80},
+        },
+    )
+    wait_for_servent_entity(base_url, token, SIREN_SERVENT_ID, "on", 30)
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))

@@ -22,13 +22,16 @@ from servents.data_model.entity_configs import (
     EventConfig,
     FanConfig,
     LightConfig,
+    LockConfig,
     NumberConfig,
     SelectConfig,
     SensorConfig,
+    SirenConfig,
     SwitchConfig,
     TextConfig,
     ThresholdBinarySensorConfig,
     TimeConfig,
+    ValveConfig,
 )
 from servents.data_model.entity_types import EntityType
 
@@ -54,8 +57,8 @@ class TestParseEntityConfig:
             parse_entity_config({"entity_type": "", "servent_id": "x", "name": "X"})
 
     def test_unsupported_entity_type_raises(self):
-        with pytest.raises(ServiceValidationError, match="entity type: lock is not supported"):
-            parse_entity_config({"entity_type": "lock", "servent_id": "x", "name": "X"})
+        with pytest.raises(ServiceValidationError, match="entity type: unsupported is not supported"):
+            parse_entity_config({"entity_type": "unsupported", "servent_id": "x", "name": "X"})
 
     @pytest.mark.parametrize(
         ("payload_extra", "entity_type", "expected_class"),
@@ -71,6 +74,9 @@ class TestParseEntityConfig:
             ({}, "light", LightConfig),
             ({}, "cover", CoverConfig),
             ({}, "fan", FanConfig),
+            ({"supports_open": True}, "lock", LockConfig),
+            ({"supports_position": True}, "valve", ValveConfig),
+            ({"available_tones": ["fire"]}, "siren", SirenConfig),
             ({}, "text", TextConfig),
             ({}, "date", DateConfig),
             ({}, "time", TimeConfig),
@@ -98,6 +104,9 @@ class TestParseEntityConfig:
             EntityType.LIGHT,
             EntityType.COVER,
             EntityType.FAN,
+            EntityType.LOCK,
+            EntityType.VALVE,
+            EntityType.SIREN,
             EntityType.TEXT,
             EntityType.DATE,
             EntityType.TIME,
