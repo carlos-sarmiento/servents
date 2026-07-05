@@ -483,6 +483,18 @@ def wait_for_entity_id_state(
     raise LiveHAError(f"Entity {entity_id} did not reach state {expected_state!r}; last state was {last_state}")
 
 
+def wait_for_entity_absent(base_url: str, token: str, entity_id: str, timeout_seconds: int) -> None:
+    """Wait until a known HA entity_id disappears from the state machine."""
+    deadline = time.monotonic() + timeout_seconds
+    last_state: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        last_state = find_entity_state_by_entity_id(base_url, token, entity_id)
+        if last_state is None:
+            return
+        time.sleep(1)
+    raise LiveHAError(f"Entity {entity_id} was not removed; last state was {last_state}")
+
+
 def run_smoke(base_url: str, token: str) -> str:
     """Exercise config entry setup and existing sensor create/update path."""
     create_servents_config_entry(base_url, token)
@@ -588,6 +600,47 @@ def run_smoke(base_url: str, token: str) -> str:
     attributes = state.get("attributes") or {}
     if attributes.get("source") != "attribute-only" or attributes.get("merged") != "yes":
         raise LiveHAError(f"Merge-attribute update failed: {attributes}")
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "remove_entity",
+        {
+            "servent_id": SERVENT_ID,
+        },
+    )
+    wait_for_entity_absent(base_url, token, entity_id, 30)
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "sensor",
+                    "servent_id": SERVENT_ID,
+                    "name": "Live HA Temperature",
+                    "default_state": 30,
+                    "restore_state": False,
+                    "fixed_attributes": {"phase": "3"},
+                    "device_definition": {
+                        "device_id": "live-ha-device",
+                        "name": "Live HA Device",
+                        "manufacturer": "ServEnts",
+                        "model": "Live Harness",
+                        "version": "0",
+                    },
+                }
+            ]
+        },
+    )
+    recreated = wait_for_live_entity(base_url, token, "30", 30)
+    recreated_attributes = recreated.get("attributes") or {}
+    if recreated_attributes.get("phase") != "3":
+        raise LiveHAError(f"Removed entity did not recreate cleanly: {recreated}")
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))

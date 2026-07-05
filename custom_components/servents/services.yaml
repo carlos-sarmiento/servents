@@ -39,3 +39,38 @@ update_state:
 cleanup_devices:
   name: Cleanup Devices
   description: Removes Devices (and entities) from devices that have not been "created" in the current run of Home Assistant. Use with care, even though entities will be recreated, their IDs will change and any automation that used the ids will break!
+
+remove_entity:
+  name: Remove Entity
+  description: Removes one ServEnt entity by servent_id.
+  fields:
+    servent_id:
+      description: The ID that uniquely identifies this ServEnt entity.
+      example: "kitchen-switch-virtual-for-something"
+      required: true
+      selector:
+        text:
+
+trigger_event:
+  name: Trigger Event
+  description: Triggers a live ServEnt event entity.
+  fields:
+    servent_id:
+      description: The ID that uniquely identifies this ServEnt event entity.
+      example: "doorbell-event"
+      required: true
+      selector:
+        text:
+    event_type:
+      description: The event type to trigger.
+      example: "pressed"
+      required: true
+      selector:
+        text:
+    attributes:
+      description: Dictionary of event attributes.
+      example:
+        confidence: 0.93
+      required: false
+      selector:
+        object:

@@ -1,7 +1,7 @@
 """Characterization tests for the service handlers in __init__.py."""
 
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import voluptuous as vol
@@ -16,7 +16,7 @@ from custom_components.servents import (
 )
 from custom_components.servents.const import CORE_DEVICE_ID, DOMAIN
 from custom_components.servents.sensor import ServEntSensor
-from custom_components.servents.services import handle_cleanup_devices
+from custom_components.servents.services import handle_cleanup_devices, handle_remove_entity, handle_trigger_event
 from tests.conftest import FakeServiceCall, make_definition
 
 
@@ -409,6 +409,22 @@ class TestServiceSchemas:
         payload = {"servent_id": "s1", "available": False, "merge_attributes": True}
         assert UPDATE_STATE_SCHEMA(payload) == payload
 
+    def test_remove_entity_schema_requires_servent_id(self):
+        from custom_components.servents.services import REMOVE_ENTITY_SCHEMA
+
+        with pytest.raises(vol.Invalid):
+            REMOVE_ENTITY_SCHEMA({})
+        assert REMOVE_ENTITY_SCHEMA({"servent_id": "s1"}) == {"servent_id": "s1"}
+
+    def test_trigger_event_schema_defaults_attributes(self):
+        from custom_components.servents.services import TRIGGER_EVENT_SCHEMA
+
+        assert TRIGGER_EVENT_SCHEMA({"servent_id": "s1", "event_type": "pressed"}) == {
+            "servent_id": "s1",
+            "event_type": "pressed",
+            "attributes": {},
+        }
+
 
 class TestRegisterAndUpdateAllEntities:
     def test_builds_missing_and_updates_existing(self, registrar):
@@ -453,7 +469,7 @@ class TestRegisterAndUpdateAllEntities:
 
 
 class TestSetup:
-    def test_register_services_registers_three_services(self):
+    def test_register_services_registers_services(self):
         from custom_components.servents.services import async_register_services
 
         hass = MagicMock()
@@ -464,6 +480,8 @@ class TestSetup:
             ("servents", "create_entity"),
             ("servents", "update_state"),
             ("servents", "cleanup_devices"),
+            ("servents", "remove_entity"),
+            ("servents", "trigger_event"),
         }
 
 
@@ -531,3 +549,155 @@ class TestCleanupDevices:
         )
 
         assert await self.run_cleanup([stale], registrar) == {"stale-entry"}
+
+
+class TestRemoveEntity:
+    async def run_remove(self, registrar, *, entity_id="sensor.s1", device_id="device-entry", remaining=None):
+        entity_registry = MagicMock()
+        entity_registry.async_get_entity_id.return_value = entity_id
+        entity_registry.async_get.return_value = MagicMock(device_id=device_id)
+
+        device_registry = MagicMock()
+        device_registry.async_get.return_value = MagicMock(id=device_id)
+
+        with (
+            patch("custom_components.servents.services.er.async_get", return_value=entity_registry),
+            patch(
+                "custom_components.servents.services.er.async_entries_for_device",
+                return_value=remaining or [],
+            ),
+            patch("custom_components.servents.services.dr.async_get", return_value=device_registry),
+        ):
+            await handle_remove_entity(FakeServiceCall({"servent_id": "s1"}, registrar))
+
+        return entity_registry, device_registry
+
+    async def test_unknown_id_is_noop(self, registrar):
+        with (
+            patch("custom_components.servents.services.er.async_get") as entity_get,
+            patch("custom_components.servents.services.dr.async_get") as device_get,
+        ):
+            await handle_remove_entity(FakeServiceCall({"servent_id": "ghost"}, registrar))
+
+        entity_get.assert_not_called()
+        device_get.assert_not_called()
+
+    async def test_removes_live_entity_definition_registry_entry_and_empty_device(self, registrar):
+        registrar.register_definition(
+            make_definition("sensor", "s1", device_config={"device_id": "dev1", "name": "Dev"})
+        )
+        registrar.register_live_entity("s1", MagicMock(servent_config=registrar.get_definition_for_servent_id("s1")))
+
+        entity_registry, device_registry = await self.run_remove(registrar)
+
+        entity_registry.async_remove.assert_called_once_with("sensor.s1")
+        device_registry.async_remove_device.assert_called_once_with("device-entry")
+        assert registrar.get_definition_for_servent_id("s1") is None
+        assert registrar.get_live_entity_for_servent_id("s1") is None
+
+    async def test_removes_definition_only_entity(self, registrar):
+        registrar.register_definition(make_definition("sensor", "s1"))
+
+        entity_registry, _device_registry = await self.run_remove(registrar, device_id=None)
+
+        entity_registry.async_remove.assert_called_once_with("sensor.s1")
+        assert registrar.get_definition_for_servent_id("s1") is None
+
+    async def test_keeps_multi_entity_device(self, registrar):
+        registrar.register_definition(make_definition("sensor", "s1"))
+
+        _entity_registry, device_registry = await self.run_remove(
+            registrar,
+            remaining=[MagicMock(entity_id="sensor.other")],
+        )
+
+        device_registry.async_remove_device.assert_not_called()
+
+    async def test_missing_registry_entry_still_removes_registrar_state(self, registrar):
+        registrar.register_definition(make_definition("sensor", "s1"))
+        entity_registry = MagicMock()
+        entity_registry.async_get_entity_id.return_value = None
+
+        with (
+            patch("custom_components.servents.services.er.async_get", return_value=entity_registry),
+            patch("custom_components.servents.services.dr.async_get", return_value=MagicMock()),
+        ):
+            await handle_remove_entity(FakeServiceCall({"servent_id": "s1"}, registrar))
+
+        entity_registry.async_remove.assert_not_called()
+        assert registrar.get_definition_for_servent_id("s1") is None
+
+    async def test_registry_remove_failure_raises_home_assistant_error(self, registrar):
+        registrar.register_definition(make_definition("sensor", "s1"))
+        entity_registry = MagicMock()
+        entity_registry.async_get_entity_id.return_value = "sensor.s1"
+        entity_registry.async_get.return_value = MagicMock(device_id="device-entry")
+        entity_registry.async_remove.side_effect = RuntimeError("boom")
+
+        with (
+            patch("custom_components.servents.services.er.async_get", return_value=entity_registry),
+            patch("custom_components.servents.services.dr.async_get", return_value=MagicMock()),
+            pytest.raises(HomeAssistantError, match="Failed to remove ServEnt entity"),
+        ):
+            await handle_remove_entity(FakeServiceCall({"servent_id": "s1"}, registrar))
+
+    async def test_create_after_remove_recreates_entity(self, registrar):
+        register_builder(registrar, SensorConfig)
+        registrar.register_definition(make_definition("sensor", "s1"))
+        await self.run_remove(registrar, entity_id=None, device_id=None)
+
+        await handle_create_entity(
+            FakeServiceCall({"entities": [{"entity_type": "sensor", "servent_id": "s1", "name": "S1"}]}, registrar)
+        )
+
+        assert registrar.get_definition_for_servent_id("s1") is not None
+        assert registrar.get_live_entity_for_servent_id("s1") is not None
+
+
+class TestTriggerEvent:
+    async def test_non_live_event_is_noop(self, registrar):
+        await handle_trigger_event(
+            FakeServiceCall({"servent_id": "event1", "event_type": "pressed", "attributes": {}}, registrar)
+        )
+
+    async def test_non_event_live_entity_is_noop(self, registrar):
+        live = MagicMock(spec=[])
+        registrar.register_live_entity("event1", live)
+
+        await handle_trigger_event(
+            FakeServiceCall({"servent_id": "event1", "event_type": "pressed", "attributes": {}}, registrar)
+        )
+
+    async def test_triggers_live_event_entity(self, registrar):
+        live = MagicMock()
+        live.async_trigger_event = AsyncMock()
+        registrar.register_live_entity("event1", live)
+
+        await handle_trigger_event(
+            FakeServiceCall(
+                {"servent_id": "event1", "event_type": "pressed", "attributes": {"confidence": 0.93}},
+                registrar,
+            )
+        )
+
+        live.async_trigger_event.assert_awaited_once_with("pressed", {"confidence": 0.93})
+
+    async def test_invalid_event_type_error_propagates_from_entity(self, registrar):
+        live = MagicMock()
+        live.async_trigger_event = AsyncMock(side_effect=HomeAssistantError("invalid event type"))
+        registrar.register_live_entity("event1", live)
+
+        with pytest.raises(HomeAssistantError, match="invalid event type"):
+            await handle_trigger_event(
+                FakeServiceCall({"servent_id": "event1", "event_type": "unknown", "attributes": {}}, registrar)
+            )
+
+    async def test_repeated_triggers_reach_entity(self, registrar):
+        live = MagicMock()
+        live.async_trigger_event = AsyncMock()
+        registrar.register_live_entity("event1", live)
+
+        await handle_trigger_event(FakeServiceCall({"servent_id": "event1", "event_type": "pressed"}, registrar))
+        await handle_trigger_event(FakeServiceCall({"servent_id": "event1", "event_type": "pressed"}, registrar))
+
+        assert live.async_trigger_event.await_count == 2

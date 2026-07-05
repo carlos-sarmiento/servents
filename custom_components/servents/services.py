@@ -18,6 +18,7 @@ Error semantics (H7):
 """
 
 import logging
+from inspect import isawaitable
 
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -41,6 +42,8 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_CREATE_ENTITY = "create_entity"
 SERVICE_UPDATE_STATE = "update_state"
 SERVICE_CLEANUP_DEVICES = "cleanup_devices"
+SERVICE_REMOVE_ENTITY = "remove_entity"
+SERVICE_TRIGGER_EVENT = "trigger_event"
 
 # Top-level schemas (M8). They only validate the outer envelope; the inner
 # entity/device dicts are validated by serde.from_dict at parse time (WP3), so
@@ -67,6 +70,20 @@ UPDATE_STATE_SCHEMA = vol.Schema(
 )
 
 CLEANUP_DEVICES_SCHEMA = vol.Schema({}, extra=vol.ALLOW_EXTRA)
+
+REMOVE_ENTITY_SCHEMA = vol.Schema(
+    {vol.Required("servent_id"): cv.string},
+    extra=vol.ALLOW_EXTRA,
+)
+
+TRIGGER_EVENT_SCHEMA = vol.Schema(
+    {
+        vol.Required("servent_id"): cv.string,
+        vol.Required("event_type"): cv.string,
+        vol.Optional("attributes", default={}): dict,
+    },
+    extra=vol.ALLOW_EXTRA,
+)
 
 
 async def handle_create_entity(call: ServiceCall) -> None:
@@ -225,6 +242,66 @@ async def handle_cleanup_devices(call: ServiceCall) -> None:
             device_registry.async_remove_device(device_entry.id)
 
 
+async def handle_remove_entity(call: ServiceCall) -> None:
+    """Remove a ServEnt entity from HA registries and the registrar."""
+    hass = call.hass
+    registrar = get_registrar_from_hass(hass)
+    servent_id = call.data["servent_id"]
+
+    live_entity = registrar.get_live_entity_for_servent_id(servent_id)
+    definition = registrar.get_definition_for_servent_id(servent_id)
+    lookup_definition = definition or getattr(live_entity, "servent_config", None)
+    if live_entity is None and definition is None:
+        return
+
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+    device_id = None
+
+    if lookup_definition is not None:
+        domain = ha_domain_for_definition(lookup_definition)
+        unique_id = servent_unique_id(servent_id)
+        entity_id = entity_registry.async_get_entity_id(domain, DOMAIN, unique_id)
+        if entity_id is not None:
+            entry = entity_registry.async_get(entity_id)
+            device_id = entry.device_id if entry is not None else None
+            try:
+                entity_registry.async_remove(entity_id)
+            except Exception as err:  # noqa: BLE001 - surface registry write failures as HA errors
+                raise HomeAssistantError(f"Failed to remove ServEnt entity {servent_id!r}: {err}") from err
+
+    registrar.remove_definition(servent_id)
+    registrar.remove_live_entity(servent_id)
+
+    if device_id is None:
+        return
+
+    remaining_entries = er.async_entries_for_device(entity_registry, device_id, include_disabled_entities=True)
+    if remaining_entries or device_registry.async_get(device_id) is None:
+        return
+
+    try:
+        device_registry.async_remove_device(device_id)
+    except Exception as err:  # noqa: BLE001 - surface registry write failures as HA errors
+        raise HomeAssistantError(f"Failed to remove ServEnt device for {servent_id!r}: {err}") from err
+
+
+async def handle_trigger_event(call: ServiceCall) -> None:
+    """Trigger a live ServEnt event entity if it has been registered."""
+    registrar = get_registrar_from_hass(call.hass)
+    live_entity = registrar.get_live_entity_for_servent_id(call.data["servent_id"])
+    if live_entity is None:
+        return
+
+    trigger = getattr(live_entity, "async_trigger_event", None)
+    if not callable(trigger):
+        return
+
+    result = trigger(call.data["event_type"], call.data.get("attributes", {}))
+    if isawaitable(result):
+        await result
+
+
 def register_and_update_all_entities(registrar: ServentDefinitionRegistrar) -> None:
     """Build entities for new definitions and reconfigure existing live ones."""
     definitions = registrar.get_all_definitions()
@@ -252,7 +329,7 @@ def register_and_update_all_entities(registrar: ServentDefinitionRegistrar) -> N
 
 
 def async_register_services(hass: HomeAssistant) -> None:
-    """Register the three ServEnts services with their top-level schemas."""
+    """Register ServEnts services with their top-level schemas."""
     hass.services.async_register(
         DOMAIN, SERVICE_CREATE_ENTITY, handle_create_entity, schema=CREATE_ENTITY_SCHEMA
     )
@@ -262,9 +339,21 @@ def async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(
         DOMAIN, SERVICE_CLEANUP_DEVICES, handle_cleanup_devices, schema=CLEANUP_DEVICES_SCHEMA
     )
+    hass.services.async_register(
+        DOMAIN, SERVICE_REMOVE_ENTITY, handle_remove_entity, schema=REMOVE_ENTITY_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_TRIGGER_EVENT, handle_trigger_event, schema=TRIGGER_EVENT_SCHEMA
+    )
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
-    """Remove the three ServEnts services (pairs with async_register_services)."""
-    for service in (SERVICE_CREATE_ENTITY, SERVICE_UPDATE_STATE, SERVICE_CLEANUP_DEVICES):
+    """Remove ServEnts services (pairs with async_register_services)."""
+    for service in (
+        SERVICE_CREATE_ENTITY,
+        SERVICE_UPDATE_STATE,
+        SERVICE_CLEANUP_DEVICES,
+        SERVICE_REMOVE_ENTITY,
+        SERVICE_TRIGGER_EVENT,
+    ):
         hass.services.async_remove(DOMAIN, service)

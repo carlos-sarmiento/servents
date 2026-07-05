@@ -11,6 +11,8 @@ from custom_components.servents.registrar import ServentDefinitionRegistrar
 from custom_components.servents.services import (
     SERVICE_CLEANUP_DEVICES,
     SERVICE_CREATE_ENTITY,
+    SERVICE_REMOVE_ENTITY,
+    SERVICE_TRIGGER_EVENT,
     SERVICE_UPDATE_STATE,
 )
 
@@ -79,12 +81,16 @@ async def test_async_setup_entry_cleans_up_partial_globals_when_late_registratio
         (DOMAIN, SERVICE_CREATE_ENTITY),
         (DOMAIN, SERVICE_UPDATE_STATE),
         (DOMAIN, SERVICE_CLEANUP_DEVICES),
+        (DOMAIN, SERVICE_REMOVE_ENTITY),
+        (DOMAIN, SERVICE_TRIGGER_EVENT),
     }
     hass.services.async_remove.assert_has_calls(
         [
             call(DOMAIN, SERVICE_CREATE_ENTITY),
             call(DOMAIN, SERVICE_UPDATE_STATE),
             call(DOMAIN, SERVICE_CLEANUP_DEVICES),
+            call(DOMAIN, SERVICE_REMOVE_ENTITY),
+            call(DOMAIN, SERVICE_TRIGGER_EVENT),
         ]
     )
     assert WEBSOCKET_COMMAND not in hass.data[websocket_api.const.DOMAIN]
@@ -124,6 +130,8 @@ async def test_async_unload_entry_tears_down_services_websocket_and_listeners_af
             call(DOMAIN, SERVICE_CREATE_ENTITY),
             call(DOMAIN, SERVICE_UPDATE_STATE),
             call(DOMAIN, SERVICE_CLEANUP_DEVICES),
+            call(DOMAIN, SERVICE_REMOVE_ENTITY),
+            call(DOMAIN, SERVICE_TRIGGER_EVENT),
         ]
     )
     assert WEBSOCKET_COMMAND not in hass.data[websocket_api.const.DOMAIN]

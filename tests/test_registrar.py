@@ -54,6 +54,18 @@ class TestRegisterDefinition:
         registrar.register_definition(make_definition("switch", "s2"))
         assert len(registrar.get_all_definitions()) == 2
 
+    def test_get_definition_for_servent_id(self, registrar):
+        definition = make_definition("sensor", "s1")
+        registrar.register_definition(definition)
+        assert registrar.get_definition_for_servent_id("s1") is definition
+        assert registrar.get_definition_for_servent_id("ghost") is None
+
+    def test_remove_definition(self, registrar):
+        registrar.register_definition(make_definition("sensor", "s1"))
+        registrar.remove_definition("s1")
+        registrar.remove_definition("s1")
+        assert registrar.get_all_definitions() == []
+
 
 class TestGetDefinitionsOfType:
     def test_filters_by_type(self, registrar):
@@ -78,6 +90,13 @@ class TestLiveEntities:
         entity = MagicMock()
         registrar.register_live_entity("s1", entity)
         assert registrar.get_live_entity_for_servent_id("s1") is entity
+
+    def test_remove_live_entity(self, registrar):
+        entity = MagicMock()
+        registrar.register_live_entity("s1", entity)
+        registrar.remove_live_entity("s1")
+        registrar.remove_live_entity("s1")
+        assert registrar.get_live_entity_for_servent_id("s1") is None
 
 
 class TestBuilders:

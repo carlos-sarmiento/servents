@@ -59,11 +59,20 @@ class ServentDefinitionRegistrar:
     def get_all_definitions(self) -> list[EntityConfig]:
         return [x for x in self.entity_definitions.values()]
 
+    def get_definition_for_servent_id(self, servent_id: str) -> EntityConfig | None:
+        return self.entity_definitions.get(servent_id)
+
+    def remove_definition(self, servent_id: str) -> None:
+        self.entity_definitions.pop(servent_id, None)
+
     def get_live_entity_for_servent_id(self, servent_id: str) -> ServEntEntity | None:
         return self.live_entities[servent_id] if servent_id in self.live_entities else None
 
     def register_live_entity(self, servent_id: str, entity: ServEntEntity) -> None:
         self.live_entities[servent_id] = entity
+
+    def remove_live_entity(self, servent_id: str) -> None:
+        self.live_entities.pop(servent_id, None)
 
     def register_builder_for_definition(
         self,
