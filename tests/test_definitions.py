@@ -13,11 +13,14 @@ from homeassistant.const import Platform
 from servents.data_model.entity_configs import (
     BinarySensorConfig,
     ButtonConfig,
+    CoverConfig,
     DateConfig,
     DatetimeConfig,
     DeviceConfig,
     EntityConfig,
     EventConfig,
+    FanConfig,
+    LightConfig,
     NumberConfig,
     SelectConfig,
     SensorConfig,
@@ -50,8 +53,8 @@ class TestParseEntityConfig:
             parse_entity_config({"entity_type": "", "servent_id": "x", "name": "X"})
 
     def test_unsupported_entity_type_raises(self):
-        with pytest.raises(ServiceValidationError, match="entity type: light is not supported"):
-            parse_entity_config({"entity_type": "light", "servent_id": "x", "name": "X"})
+        with pytest.raises(ServiceValidationError, match="entity type: climate is not supported"):
+            parse_entity_config({"entity_type": "climate", "servent_id": "x", "name": "X"})
 
     @pytest.mark.parametrize(
         ("payload_extra", "entity_type", "expected_class"),
@@ -63,6 +66,9 @@ class TestParseEntityConfig:
             ({"mode": "auto"}, "number", NumberConfig),
             ({"event": "e"}, "button", ButtonConfig),
             ({"options": ["a"]}, "select", SelectConfig),
+            ({}, "light", LightConfig),
+            ({}, "cover", CoverConfig),
+            ({}, "fan", FanConfig),
             ({}, "text", TextConfig),
             ({}, "date", DateConfig),
             ({}, "time", TimeConfig),
@@ -86,6 +92,9 @@ class TestParseEntityConfig:
             EntityType.NUMBER,
             EntityType.BUTTON,
             EntityType.SELECT,
+            EntityType.LIGHT,
+            EntityType.COVER,
+            EntityType.FAN,
             EntityType.TEXT,
             EntityType.DATE,
             EntityType.TIME,

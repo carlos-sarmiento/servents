@@ -6,7 +6,10 @@ from unittest.mock import MagicMock
 import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.button import ButtonDeviceClass
+from homeassistant.components.cover import CoverDeviceClass, CoverEntityFeature, CoverState
 from homeassistant.components.event import EventDeviceClass
+from homeassistant.components.fan import FanEntityFeature
+from homeassistant.components.light import ColorMode
 from homeassistant.components.number import NumberDeviceClass
 from homeassistant.components.number.const import DEFAULT_MAX_VALUE, DEFAULT_MIN_VALUE, DEFAULT_STEP, NumberMode
 from homeassistant.components.sensor.const import SensorDeviceClass
@@ -20,9 +23,12 @@ from custom_components.servents.binary_sensor import (
     ServEntThresholdBinarySensor,
 )
 from custom_components.servents.button import ServEntButton
+from custom_components.servents.cover import ServEntCover
 from custom_components.servents.date import ServEntDateEntity
 from custom_components.servents.datetime import ServEntDatetimeEntity
 from custom_components.servents.event import ServEntEventEntity
+from custom_components.servents.fan import ServEntFan
+from custom_components.servents.light import ServEntLight
 from custom_components.servents.number import ServEntNumber
 from custom_components.servents.select import ServEntSelect
 from custom_components.servents.sensor import ServEntSensor
@@ -259,6 +265,234 @@ class TestServEntButton:
     def test_name_property(self):
         ent = self.make_button()
         assert ent.name == "Test"
+
+
+class TestServEntLight:
+    def test_config_without_brightness(self):
+        ent = ServEntLight(make_definition("light", "light1"))
+
+        assert ent.supported_color_modes == {ColorMode.ONOFF}
+
+    def test_config_with_brightness_and_state(self):
+        ent = ServEntLight(make_definition("light", "light1", supports_brightness=True))
+
+        ent.set_new_state_and_attributes({"state": True, "brightness": 128}, None)
+
+        assert ent.supported_color_modes == {ColorMode.BRIGHTNESS}
+        assert ent._attr_is_on is True
+        assert ent._attr_color_mode is ColorMode.BRIGHTNESS
+        assert ent._attr_brightness == 128
+
+    def test_partial_state_update_preserves_absent_fields(self):
+        ent = ServEntLight(make_definition("light", "light1", supports_brightness=True))
+        ent.set_new_state_and_attributes({"state": True, "brightness": 128}, None)
+
+        ent.set_new_state_and_attributes({"state": False}, None)
+
+        assert ent._attr_is_on is False
+        assert ent._attr_color_mode is None
+        assert ent._attr_brightness == 128
+
+    async def test_turn_on_fires_command_without_optimistic_state(self):
+        ent = ServEntLight(make_definition("light", "light1", supports_brightness=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_turn_on(brightness=128)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "light1", "entity_type": "light", "command": {"state": True, "brightness": 128}},
+        )
+        assert ent._attr_is_on is None
+        ent.verified_schedule_update_ha_state.assert_not_called()
+
+    async def test_turn_on_applies_optimistic_state(self):
+        ent = ServEntLight(make_definition("light", "light1", supports_brightness=True, optimistic=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_turn_on(brightness=200)
+
+        assert ent._attr_is_on is True
+        assert ent._attr_brightness == 200
+        assert ent._attr_color_mode is ColorMode.BRIGHTNESS
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_turn_off_applies_optimistic_state(self):
+        ent = ServEntLight(make_definition("light", "light1", supports_brightness=True, optimistic=True))
+        ent.hass = MagicMock()
+        ent.set_new_state_and_attributes({"state": True, "brightness": 200}, None)
+
+        await ent.async_turn_off()
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "light1", "entity_type": "light", "command": {"state": False}},
+        )
+        assert ent._attr_is_on is False
+        assert ent._attr_color_mode is None
+
+
+class TestServEntCover:
+    def test_config_and_state(self):
+        ent = ServEntCover(
+            make_definition(
+                "cover",
+                "cover1",
+                device_class="garage",
+                supports_position=True,
+                supports_stop=True,
+            )
+        )
+
+        ent.set_new_state_and_attributes({"state": "opening", "position": 35}, None)
+
+        assert ent._attr_device_class is CoverDeviceClass.GARAGE
+        assert ent.supported_features == (
+            CoverEntityFeature.OPEN
+            | CoverEntityFeature.CLOSE
+            | CoverEntityFeature.SET_POSITION
+            | CoverEntityFeature.STOP
+        )
+        assert ent.state == CoverState.OPENING
+        assert ent.current_cover_position == 35
+
+    def test_partial_state_update_preserves_absent_fields(self):
+        ent = ServEntCover(make_definition("cover", "cover1", supports_position=True))
+        ent.set_new_state_and_attributes({"state": "open", "position": 75}, None)
+
+        ent.set_new_state_and_attributes({"state": "closed"}, None)
+
+        assert ent._attr_is_closed is True
+        assert ent._attr_current_cover_position == 75
+
+    async def test_open_fires_command_without_optimistic_state(self):
+        ent = ServEntCover(make_definition("cover", "cover1"))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_open_cover()
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "cover1", "entity_type": "cover", "command": {"action": "open"}},
+        )
+        assert ent._attr_is_opening is None
+        ent.verified_schedule_update_ha_state.assert_not_called()
+
+    async def test_open_applies_optimistic_state(self):
+        ent = ServEntCover(make_definition("cover", "cover1", optimistic=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_open_cover()
+
+        assert ent._attr_is_opening is True
+        assert ent._attr_is_closing is False
+        assert ent._attr_is_closed is False
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_set_position_fires_command_and_applies_optimistic_state(self):
+        ent = ServEntCover(make_definition("cover", "cover1", supports_position=True, optimistic=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_cover_position(position=50)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "cover1", "entity_type": "cover", "command": {"position": 50}},
+        )
+        assert ent._attr_current_cover_position == 50
+        assert ent._attr_is_closed is False
+
+
+class TestServEntFan:
+    def test_config_and_state(self):
+        ent = ServEntFan(
+            make_definition("fan", "fan1", supports_percentage=True, preset_modes=["auto", "boost"])
+        )
+
+        ent.set_new_state_and_attributes({"state": True, "percentage": 40, "preset_mode": "auto"}, None)
+
+        assert ent.supported_features == (
+            FanEntityFeature.TURN_ON
+            | FanEntityFeature.TURN_OFF
+            | FanEntityFeature.SET_SPEED
+            | FanEntityFeature.PRESET_MODE
+        )
+        assert ent._attr_preset_modes == ["auto", "boost"]
+        assert ent._attr_percentage == 40
+        assert ent._attr_preset_mode == "auto"
+        assert ent.is_on is True
+
+    def test_power_state_keeps_fan_state_coherent(self):
+        ent = ServEntFan(make_definition("fan", "fan1"))
+
+        ent.set_new_state_and_attributes({"state": True}, None)
+        assert ent._attr_percentage == 100
+        assert ent.is_on is True
+
+        ent.set_new_state_and_attributes({"state": False}, None)
+        assert ent._attr_percentage == 0
+        assert ent._attr_preset_mode is None
+        assert ent.is_on is False
+
+    def test_partial_state_update_preserves_absent_fields(self):
+        ent = ServEntFan(make_definition("fan", "fan1", supports_percentage=True, preset_modes=["auto"]))
+        ent.set_new_state_and_attributes({"state": True, "percentage": 40, "preset_mode": "auto"}, None)
+
+        ent.set_new_state_and_attributes({"percentage": 60}, None)
+
+        assert ent._attr_percentage == 60
+        assert ent._attr_preset_mode == "auto"
+
+    async def test_turn_on_fires_command_without_optimistic_state(self):
+        ent = ServEntFan(make_definition("fan", "fan1", supports_percentage=True, preset_modes=["auto"]))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_turn_on(percentage=55, preset_mode="auto")
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {
+                "servent_id": "fan1",
+                "entity_type": "fan",
+                "command": {"state": True, "percentage": 55, "preset_mode": "auto"},
+            },
+        )
+        assert ent._attr_percentage is None
+        ent.verified_schedule_update_ha_state.assert_not_called()
+
+    async def test_set_percentage_applies_optimistic_state(self):
+        ent = ServEntFan(make_definition("fan", "fan1", supports_percentage=True, optimistic=True))
+        ent.hass = MagicMock()
+        ent.verified_schedule_update_ha_state = MagicMock()
+
+        await ent.async_set_percentage(25)
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "fan1", "entity_type": "fan", "command": {"percentage": 25}},
+        )
+        assert ent._attr_percentage == 25
+        ent.verified_schedule_update_ha_state.assert_called_once()
+
+    async def test_turn_off_applies_optimistic_state(self):
+        ent = ServEntFan(make_definition("fan", "fan1", supports_percentage=True, optimistic=True))
+        ent.hass = MagicMock()
+        ent.set_new_state_and_attributes({"state": True, "percentage": 25}, None)
+
+        await ent.async_turn_off()
+
+        ent.hass.bus.async_fire.assert_called_once_with(
+            "servent.entity_command",
+            {"servent_id": "fan1", "entity_type": "fan", "command": {"state": False}},
+        )
+        assert ent._attr_percentage == 0
+        assert ent._attr_preset_mode is None
 
 
 class TestServEntTextEntity:

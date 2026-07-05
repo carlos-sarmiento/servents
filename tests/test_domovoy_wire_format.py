@@ -20,7 +20,8 @@ Notable properties of the format:
 
 from unittest.mock import MagicMock, patch
 
-from servents.data_model.entity_configs import DeviceConfig, SensorConfig
+import pytest
+from servents.data_model.entity_configs import CoverConfig, DeviceConfig, FanConfig, LightConfig, SensorConfig
 
 from custom_components.servents import handle_create_entity, handle_update_entity
 from custom_components.servents.definitions import parse_entity_config
@@ -49,6 +50,51 @@ def domovoy_sensor_payload() -> dict:
             "app_name": "my_app",
             "is_global": False,
         },
+    }
+
+
+def domovoy_light_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable light."""
+    return {
+        "entity_type": "light",
+        "servent_id": "my_app-light",
+        "name": "Light",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "supports_brightness": True,
+        "optimistic": True,
+    }
+
+
+def domovoy_cover_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable cover."""
+    return {
+        "entity_type": "cover",
+        "servent_id": "my_app-cover",
+        "name": "Cover",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "device_class": "garage",
+        "supports_position": True,
+        "supports_stop": True,
+        "optimistic": True,
+    }
+
+
+def domovoy_fan_payload() -> dict:
+    """Verbatim Domovoy create_entity payload for a controllable fan."""
+    return {
+        "entity_type": "fan",
+        "servent_id": "my_app-fan",
+        "name": "Fan",
+        "fixed_attributes": {},
+        "disabled_by_default": False,
+        "app_name": "my_app",
+        "supports_percentage": True,
+        "preset_modes": ["auto", "boost"],
+        "optimistic": True,
     }
 
 
@@ -121,6 +167,23 @@ class TestDomovoyCreateEntity:
         await handle_create_entity(FakeServiceCall({"entities": [renamed]}, registrar))
         assert registrar.get_live_entity_for_servent_id("my_app-temperature") is entity
         assert entity._attr_name == "Temperature v2"
+
+
+class TestDomovoyPhase6CreateEntity:
+    @pytest.mark.parametrize(
+        ("payload", "expected_class"),
+        [
+            (domovoy_light_payload(), LightConfig),
+            (domovoy_cover_payload(), CoverConfig),
+            (domovoy_fan_payload(), FanConfig),
+        ],
+    )
+    def test_controllable_payloads_parse(self, payload, expected_class):
+        definition = parse_entity_config(payload)
+
+        assert type(definition) is expected_class
+        assert definition.optimistic is True
+        assert definition.app_name == "my_app"
 
 
 class TestDomovoyUpdateState:

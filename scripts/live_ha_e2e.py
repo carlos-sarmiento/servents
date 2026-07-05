@@ -12,6 +12,7 @@ loading path:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -25,6 +26,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+from aiohttp import ClientSession, WSMsgType
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,6 +44,9 @@ DATE_SERVENT_ID = "live-ha-date"
 TIME_SERVENT_ID = "live-ha-time"
 DATETIME_SERVENT_ID = "live-ha-datetime"
 EVENT_SERVENT_ID = "live-ha-event"
+LIGHT_SERVENT_ID = "live-ha-light"
+COVER_SERVENT_ID = "live-ha-cover"
+FAN_SERVENT_ID = "live-ha-fan"
 AUTH_USER = "servents-live"
 AUTH_PASSWORD = "servents-live-password"
 CLIENT_ID = "http://localhost/"
@@ -439,6 +445,96 @@ def call_service(
     )
 
 
+def websocket_url(base_url: str) -> str:
+    """Return HA's WebSocket API URL for a base HTTP URL."""
+    if base_url.startswith("https://"):
+        return f"wss://{base_url.removeprefix('https://')}/api/websocket"
+    if base_url.startswith("http://"):
+        return f"ws://{base_url.removeprefix('http://')}/api/websocket"
+    raise LiveHAError(f"Unsupported Home Assistant base URL: {base_url}")
+
+
+async def websocket_receive_json(ws, timeout: float) -> dict[str, Any]:
+    """Receive one JSON WebSocket message from HA."""
+    message = await ws.receive(timeout=timeout)
+    if message.type is WSMsgType.TEXT:
+        return json.loads(message.data)
+    if message.type is WSMsgType.ERROR:
+        raise LiveHAError(f"Home Assistant WebSocket failed: {ws.exception()}")
+    raise LiveHAError(f"Unexpected Home Assistant WebSocket message: {message.type}")
+
+
+async def async_call_service_and_wait_for_event(
+    base_url: str,
+    token: str,
+    domain: str,
+    service: str,
+    payload: dict[str, Any],
+    event_type: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Subscribe to an HA event, call a service, and return the next event."""
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    async with ClientSession(headers=headers) as session:
+        async with session.ws_connect(websocket_url(base_url)) as ws:
+            auth_required = await websocket_receive_json(ws, timeout_seconds)
+            if auth_required.get("type") != "auth_required":
+                raise LiveHAError(f"Unexpected WebSocket auth start: {auth_required}")
+
+            await ws.send_json({"type": "auth", "access_token": token})
+            auth_result = await websocket_receive_json(ws, timeout_seconds)
+            if auth_result.get("type") != "auth_ok":
+                raise LiveHAError(f"Unexpected WebSocket auth result: {auth_result}")
+
+            await ws.send_json({"id": 1, "type": "subscribe_events", "event_type": event_type})
+            subscribe_result = await websocket_receive_json(ws, timeout_seconds)
+            if not subscribe_result.get("success"):
+                raise LiveHAError(f"Event subscription failed: {subscribe_result}")
+
+            async with session.post(f"{base_url}/api/services/{domain}/{service}", json=payload) as response:
+                text = await response.text()
+                if response.status != 200:
+                    raise LiveHAError(f"Unexpected HTTP {response.status} for {domain}.{service}: {text}")
+
+            deadline = time.monotonic() + timeout_seconds
+            while time.monotonic() < deadline:
+                event_message = await websocket_receive_json(ws, max(deadline - time.monotonic(), 0.1))
+                if event_message.get("type") == "event":
+                    return event_message["event"]
+
+    raise LiveHAError(f"Timed out waiting for Home Assistant event {event_type!r}")
+
+
+def call_service_and_wait_for_event(
+    base_url: str,
+    token: str,
+    domain: str,
+    service: str,
+    payload: dict[str, Any],
+    event_type: str,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    """Synchronously call a service and capture the next matching HA event."""
+    return asyncio.run(
+        async_call_service_and_wait_for_event(
+            base_url,
+            token,
+            domain,
+            service,
+            payload,
+            event_type,
+            timeout_seconds,
+        )
+    )
+
+
+def assert_event_data(event: dict[str, Any], expected_data: dict[str, Any]) -> None:
+    """Assert a captured HA event has exactly the expected data payload."""
+    data = event.get("data")
+    if data != expected_data:
+        raise LiveHAError(f"Unexpected event data. Expected {expected_data!r}, got {data!r}")
+
+
 def find_servent_entity_state(base_url: str, token: str, servent_id: str) -> dict[str, Any] | None:
     """Find a live entity by the ServEnts routing attribute."""
     states = http_request(base_url, "GET", "/api/states", token=token)
@@ -778,6 +874,110 @@ def run_smoke(base_url: str, token: str) -> str:
         {"event_type": "pressed", "confidence": 0.93},
         30,
     )
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "light",
+                    "servent_id": LIGHT_SERVENT_ID,
+                    "name": "Live HA Light",
+                    "default_state": {"state": False, "brightness": 25},
+                    "supports_brightness": True,
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "6"},
+                },
+                {
+                    "entity_type": "cover",
+                    "servent_id": COVER_SERVENT_ID,
+                    "name": "Live HA Cover",
+                    "default_state": {"state": "closed", "position": 0},
+                    "supports_position": True,
+                    "supports_stop": True,
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "6"},
+                },
+                {
+                    "entity_type": "fan",
+                    "servent_id": FAN_SERVENT_ID,
+                    "name": "Live HA Fan",
+                    "default_state": {"state": False},
+                    "supports_percentage": True,
+                    "preset_modes": ["auto", "boost"],
+                    "optimistic": True,
+                    "fixed_attributes": {"phase": "6"},
+                },
+            ]
+        },
+    )
+    light_state = wait_for_servent_entity(base_url, token, LIGHT_SERVENT_ID, "off", 30)
+    cover_state = wait_for_servent_entity(base_url, token, COVER_SERVENT_ID, "closed", 30)
+    fan_state = wait_for_servent_entity(base_url, token, FAN_SERVENT_ID, "off", 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "light",
+        "turn_on",
+        {"entity_id": light_state["entity_id"], "brightness": 180},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": LIGHT_SERVENT_ID,
+            "entity_type": "light",
+            "command": {"state": True, "brightness": 180},
+        },
+    )
+    light_state = wait_for_servent_entity(base_url, token, LIGHT_SERVENT_ID, "on", 30)
+    if (light_state.get("attributes") or {}).get("brightness") != 180:
+        raise LiveHAError(f"Light optimistic brightness was not applied: {light_state}")
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "cover",
+        "open_cover",
+        {"entity_id": cover_state["entity_id"]},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": COVER_SERVENT_ID,
+            "entity_type": "cover",
+            "command": {"action": "open"},
+        },
+    )
+    wait_for_servent_entity(base_url, token, COVER_SERVENT_ID, "opening", 30)
+
+    event = call_service_and_wait_for_event(
+        base_url,
+        token,
+        "fan",
+        "set_percentage",
+        {"entity_id": fan_state["entity_id"], "percentage": 55},
+        "servent.entity_command",
+        30,
+    )
+    assert_event_data(
+        event,
+        {
+            "servent_id": FAN_SERVENT_ID,
+            "entity_type": "fan",
+            "command": {"percentage": 55},
+        },
+    )
+    fan_state = wait_for_servent_entity(base_url, token, FAN_SERVENT_ID, "on", 30)
+    if (fan_state.get("attributes") or {}).get("percentage") != 55:
+        raise LiveHAError(f"Fan optimistic percentage was not applied: {fan_state}")
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))
