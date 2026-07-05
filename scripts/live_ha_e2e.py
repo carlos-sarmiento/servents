@@ -52,6 +52,8 @@ CLIMATE_RANGE_SERVENT_ID = "live-ha-climate-range"
 LOCK_SERVENT_ID = "live-ha-lock"
 VALVE_SERVENT_ID = "live-ha-valve"
 SIREN_SERVENT_ID = "live-ha-siren"
+RENAME_OLD_SERVENT_ID = "live-ha-rename-old"
+RENAME_NEW_SERVENT_ID = "live-ha-rename-new"
 AUTH_USER = "servents-live"
 AUTH_PASSWORD = "servents-live-password"
 CLIENT_ID = "http://localhost/"
@@ -431,6 +433,29 @@ def create_servents_config_entry(base_url: str, token: str) -> None:
     )
     if result.get("type") != "create_entry":
         raise LiveHAError(f"Unexpected ServEnts config flow result: {result}")
+
+
+def get_servents_config_entry_id(base_url: str, token: str) -> str:
+    """Return the ServEnts config entry ID from HA's config-entry API."""
+    entries = http_request(base_url, "GET", "/api/config/config_entries/entry?domain=servents", token=token)
+    if not entries:
+        raise LiveHAError("ServEnts config entry was not found")
+    entry_id = entries[0].get("entry_id")
+    if not entry_id:
+        raise LiveHAError(f"ServEnts config entry did not include entry_id: {entries[0]}")
+    return str(entry_id)
+
+
+def reload_servents_config_entry(base_url: str, token: str) -> None:
+    """Reload the ServEnts config entry through HA's public API."""
+    entry_id = get_servents_config_entry_id(base_url, token)
+    http_request(
+        base_url,
+        "POST",
+        f"/api/config/config_entries/entry/{entry_id}/reload",
+        token=token,
+        json_body={},
+    )
 
 
 def call_service(
@@ -1205,6 +1230,60 @@ def run_smoke(base_url: str, token: str) -> str:
         },
     )
     wait_for_servent_entity(base_url, token, SIREN_SERVENT_ID, "on", 30)
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "sensor",
+                    "servent_id": RENAME_OLD_SERVENT_ID,
+                    "name": "Live HA Rename Old",
+                    "default_state": 70,
+                    "fixed_attributes": {"phase": "9"},
+                }
+            ]
+        },
+    )
+    old_rename_state = wait_for_servent_entity(base_url, token, RENAME_OLD_SERVENT_ID, "70", 30)
+    old_rename_entity_id = old_rename_state["entity_id"]
+    reload_servents_config_entry(base_url, token)
+
+    call_service(
+        base_url,
+        token,
+        "servents",
+        "create_entity",
+        {
+            "entities": [
+                {
+                    "entity_type": "sensor",
+                    "servent_id": RENAME_NEW_SERVENT_ID,
+                    "name": "Live HA Rename New",
+                    "default_state": 71,
+                    "previous_servent_ids": [RENAME_OLD_SERVENT_ID],
+                    "fixed_attributes": {"phase": "9"},
+                }
+            ]
+        },
+    )
+    renamed_state = wait_for_servent_attributes(
+        base_url,
+        token,
+        RENAME_NEW_SERVENT_ID,
+        {"phase": "9"},
+        30,
+    )
+    if renamed_state["entity_id"] != old_rename_entity_id:
+        raise LiveHAError(
+            "Rename migration did not preserve the entity_id: "
+            f"old={old_rename_entity_id}, new={renamed_state['entity_id']}"
+        )
+    if renamed_state["state"] != "70":
+        raise LiveHAError(f"Rename migration did not preserve restored state: {renamed_state}")
 
     config = http_request(base_url, "GET", "/api/config", token=token)
     return str(config.get("version", "unknown"))
