@@ -1,0 +1,39 @@
+name: Lint and Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ServEnts
+        uses: actions/checkout@v4
+        with:
+          path: servents
+
+      - name: Checkout servents-data-model
+        uses: actions/checkout@v4
+        with:
+          repository: carlos-sarmiento/servents-data-model
+          path: servents-data-model
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        working-directory: servents
+        run: uv sync --all-groups
+
+      - name: Lint
+        working-directory: servents
+        run: uv run ruff check .
+
+      - name: Test
+        working-directory: servents
+        run: uv run pytest

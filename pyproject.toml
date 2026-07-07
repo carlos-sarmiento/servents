@@ -11,7 +11,12 @@ dependencies = ["servents-data-model>=0.10.0"]
 servents-data-model = { path = "../servents-data-model" }
 
 [dependency-groups]
-dev = ["homeassistant>=2025.11.0", "pytest>=8.0", "pytest-asyncio>=0.24"]
+dev = [
+    "homeassistant>=2025.11.0",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.9.1",
+]
 
 [tool.ruff]
 line-length = 120
