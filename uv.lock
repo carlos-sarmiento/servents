@@ -2042,7 +2042,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "servents-data-model", directory = "servents-data-model" }]
+requires-dist = [{ name = "servents-data-model", directory = "../servents-data-model" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2054,7 +2054,7 @@ dev = [
 [[package]]
 name = "servents-data-model"
 version = "0.10.0"
-source = { directory = "servents-data-model" }
+source = { directory = "../servents-data-model" }
 dependencies = [
     { name = "pyserde" },
 ]

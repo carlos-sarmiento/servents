@@ -24,7 +24,8 @@ For a disposable Docker Home Assistant run:
 3. Leave `custom_components/servents/manifest.json` unchanged. The manifest is
    the integration contract HA reads for custom component metadata and
    requirements.
-4. Build the local `servents-data-model` wheel from `servents-data-model/`.
+4. Build the local `servents-data-model` wheel from
+   `../servents-data-model/`.
 5. Install that wheel into a mounted Python user-site before HA starts. In the
    official Docker image, HA runs in a container and checks Python's normal
    user-site for already-installed requirements before invoking its requirements
